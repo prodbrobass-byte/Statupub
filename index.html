@@ -1,0 +1,949 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>StatuPub</title>
+<meta name="description" content="StatuPub : la régie publicitaire des statuts WhatsApp au Sénégal. Annonceurs, payez au clic. Diffuseurs, gagnez de l'argent avec votre statut.">
+<meta property="og:title" content="StatuPub — Ton statut WhatsApp te rapporte">
+<meta property="og:description" content="Publie des pubs sur ton statut et gagne de l'argent à chaque clic. Annonceurs : payez seulement les vrais clics.">
+<meta name="theme-color" content="#0E3B36">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>
+/* Mise en page : appli mobile d'abord — barre du haut, contenu en une colonne qui s'élargit en grille sur grand écran.
+   Motif signature : l'anneau segmenté des statuts, repris pour les budgets et les étapes. */
+:root{
+  --ink:#0E3B36;        /* vert profond, couleur de marque */
+  --ink-2:#145049;
+  --saffron:#E8A33D;    /* accent : le safran / ocre */
+  --bg:#F6F4EE;
+  --surface:#FFFFFF;
+  --line:#E2DED2;
+  --text:#17201E;
+  --muted:#5E6A66;
+  --ok:#1F8A5B; --ok-bg:#E3F3EA;
+  --warn:#A86A12; --warn-bg:#FBF0DC;
+  --bad:#B4382C; --bad-bg:#F8E3E0;
+  --info:#2C5E8F; --info-bg:#E2ECF6;
+  --on-ink:#F3F1EA;
+  --btn-ink:#0E3B36;
+  --shadow:0 1px 2px rgba(14,59,54,.06),0 6px 20px rgba(14,59,54,.06);
+  --f-display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --f-body:"Figtree",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --r:14px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ink:#0B2925;--ink-2:#123A35;--saffron:#F0B457;--bg:#0F1614;--surface:#17201E;--line:#26312E;--text:#E9EEEB;--muted:#9AA8A3;
+  --ok:#5CCB94;--ok-bg:#16322A;--warn:#F0B457;--warn-bg:#352A16;--bad:#F08A7E;--bad-bg:#3A1F1C;--info:#8BB8E8;--info-bg:#1A2A3A;--on-ink:#F3F1EA;--btn-ink:#2B6F65;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.25);color-scheme:dark}}
+:root[data-theme="dark"]{
+  --ink:#0B2925;--ink-2:#123A35;--saffron:#F0B457;--bg:#0F1614;--surface:#17201E;--line:#26312E;--text:#E9EEEB;--muted:#9AA8A3;
+  --ok:#5CCB94;--ok-bg:#16322A;--warn:#F0B457;--warn-bg:#352A16;--bad:#F08A7E;--bad-bg:#3A1F1C;--info:#8BB8E8;--info-bg:#1A2A3A;--on-ink:#F3F1EA;--btn-ink:#2B6F65;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.25);color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font:16px/1.5 var(--f-body);-webkit-font-smoothing:antialiased}
+[hidden]{display:none!important}
+img,video{max-width:100%;display:block}
+a{color:inherit}
+h1,h2,h3{font-family:var(--f-display);line-height:1.1;margin:0;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:clamp(2.1rem,6vw,3.6rem);font-weight:800}
+h2{font-size:1.45rem;font-weight:700}
+h3{font-size:1.1rem;font-weight:700}
+p{margin:0}
+.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:700}
+.muted{color:var(--muted)}
+.small{font-size:.875rem}
+.eyebrow{font-size:.75rem;letter-spacing:.09em;text-transform:uppercase;font-weight:700;color:var(--muted)}
+.wrap{max-width:1120px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.stack{display:flex;flex-direction:column;gap:16px}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.between{justify-content:space-between}
+.grid{display:grid;gap:16px}
+@media(min-width:760px){.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}.side{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)}}
+.g2>*,.g3>*,.g4>*,.side>*{min-width:0}
+@media(max-width:759px){.g4{grid-template-columns:1fr 1fr}.g4>.wallet{grid-column:1/-1}.g4 .card{padding:16px}.g4 .kpi .num{font-size:1.3rem}}
+@media(max-width:600px){.top .who{display:none}.top nav{flex-wrap:nowrap}.top .btn-sm{padding:.4rem .65rem;font-size:.8rem}.brand{font-size:1.1rem}}
+
+/* Barre du haut */
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--ink)}
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--ink);color:var(--on-ink)}
+.top .wrap{display:flex;align-items:center;gap:12px;min-height:60px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--f-display);font-weight:800;font-size:1.25rem;text-decoration:none}
+.brand svg{flex:none}
+.top nav{margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.top .who{font-size:.85rem;opacity:.8;max-width:16ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Boutons et champs */
+.btn{appearance:none;border:1px solid transparent;border-radius:999px;padding:.7rem 1.15rem;font:600 .95rem/1 var(--f-body);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;transition:transform .08s ease,background .15s ease}
+.btn:active{transform:translateY(1px)}
+.btn:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.tab:focus-visible{outline:3px solid var(--saffron);outline-offset:2px}
+.btn-primary{background:var(--saffron);color:#231705}
+.btn-primary:hover{filter:brightness(1.05)}
+.btn-ink{background:var(--btn-ink);color:var(--on-ink)}
+.btn-ghost{background:transparent;border-color:var(--line);color:var(--text)}
+.top .btn-ghost{color:var(--on-ink);border-color:rgba(243,241,234,.3)}
+.btn-ok{background:var(--ok);color:#fff}
+.btn-bad{background:transparent;color:var(--bad);border-color:currentColor}
+.btn-sm{padding:.45rem .8rem;font-size:.85rem}
+.btn[disabled]{opacity:.55;cursor:not-allowed}
+label{display:flex;flex-direction:column;gap:6px;font-weight:600;font-size:.9rem}
+label .hint{font-weight:400;color:var(--muted);font-size:.8rem}
+input,select,textarea{font:inherit;font-weight:400;color:var(--text);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:.7rem .8rem;width:100%;min-width:0}
+textarea{min-height:110px;resize:vertical}
+.check{flex-direction:row;align-items:flex-start;gap:10px;font-weight:500}
+.check input{width:20px;height:20px;flex:none;margin-top:2px;accent-color:var(--ink)}
+
+/* Cartes */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:20px;box-shadow:var(--shadow)}
+.card.flat{box-shadow:none}
+.kpi{display:flex;flex-direction:column;gap:4px}
+.kpi .num{font-size:1.6rem;line-height:1.1}
+.kpi .unit{font-size:.8rem;color:var(--muted);font-family:var(--f-body);font-weight:600;margin-left:4px}
+.wallet{background:var(--ink);color:var(--on-ink);border:none}
+.wallet .muted,.wallet .eyebrow{color:rgba(243,241,234,.7)}
+.wallet .big{font-family:var(--f-mono);font-weight:700;font-size:2.2rem;line-height:1}
+
+.pill{display:inline-flex;align-items:center;gap:6px;padding:.2rem .6rem;border-radius:999px;font-size:.78rem;font-weight:700;white-space:nowrap}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.p-ok{background:var(--ok-bg);color:var(--ok)}.p-warn{background:var(--warn-bg);color:var(--warn)}
+.p-bad{background:var(--bad-bg);color:var(--bad)}.p-info{background:var(--info-bg);color:var(--info)}
+.p-mute{background:var(--line);color:var(--muted)}
+
+.bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--saffron);border-radius:99px}
+
+.table{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th,td{text-align:left;padding:.7rem .8rem;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:.75rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700;background:var(--bg)}
+tr:last-child td{border-bottom:none}
+td.n,th.n{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+
+.tabs{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--line);scrollbar-width:none}
+.tab{appearance:none;background:none;border:none;border-bottom:3px solid transparent;padding:.8rem .9rem;font:600 .95rem var(--f-body);color:var(--muted);cursor:pointer;white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--text);border-bottom-color:var(--saffron)}
+.tab .count{background:var(--saffron);color:#231705;border-radius:99px;padding:0 .45rem;font-size:.75rem;margin-left:6px}
+
+.notice{border-radius:var(--r);padding:14px 16px;display:flex;gap:12px;align-items:flex-start}
+.notice.warn{background:var(--warn-bg);color:var(--text)}
+.notice.info{background:var(--info-bg)}
+.notice.ok{background:var(--ok-bg)}
+.empty{text-align:center;padding:36px 16px;color:var(--muted);border:1px dashed var(--line);border-radius:var(--r)}
+
+/* Campagne (diffuseur) */
+.ad{display:flex;flex-direction:column;gap:14px}
+.ad-media{border-radius:12px;overflow:hidden;background:var(--bg);aspect-ratio:9/12;max-height:340px;display:grid;place-items:center}
+.ad-media img,.ad-media video{width:100%;height:100%;object-fit:cover}
+.ad-text{white-space:pre-wrap;background:var(--bg);border-radius:10px;padding:12px;font-size:.92rem;overflow-wrap:anywhere}
+.gain{font-family:var(--f-mono);font-weight:700;color:var(--ink);background:var(--saffron);border-radius:8px;padding:.15rem .5rem}
+.linkbox{display:flex;gap:8px;align-items:center;background:var(--bg);border:1px dashed var(--line);border-radius:10px;padding:8px 10px;font-family:var(--f-mono);font-size:.8rem;overflow-wrap:anywhere}
+.linkbox span{flex:1;min-width:0}
+
+/* Accueil */
+.hero{background:var(--ink);color:var(--on-ink);padding-block:56px 64px;overflow:hidden}
+.hero .wrap{display:grid;gap:40px;align-items:center}
+@media(min-width:860px){.hero .wrap{grid-template-columns:1.15fr .85fr}}
+.hero h1 em{font-style:normal;color:var(--saffron)}
+.hero p.lead{font-size:1.15rem;opacity:.85;max-width:52ch;margin-top:18px}
+.hero .row{margin-top:28px}
+.phone{justify-self:center;width:min(300px,80vw);aspect-ratio:9/17;border-radius:34px;background:#0a1f1c;border:8px solid #1b3a35;position:relative;overflow:hidden;box-shadow:0 30px 60px rgba(0,0,0,.35)}
+.phone .seg{position:absolute;top:12px;left:12px;right:12px;display:flex;gap:4px}
+.phone .seg i{flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,.35)}
+.phone .seg i.on{background:#fff}
+.phone .story{position:absolute;inset:0;padding:44px 18px 18px;display:flex;flex-direction:column;gap:12px;background:linear-gradient(160deg,#E8A33D 0%,#C9672C 55%,#7A2E1F 100%);color:#fff}
+.phone .story .who{display:flex;gap:8px;align-items:center;font-weight:700;font-size:.85rem}
+.phone .story .av{width:30px;height:30px;border-radius:50%;background:#fff3;border:2px solid #fff}
+.phone .story .big{margin-top:auto;font-family:var(--f-display);font-weight:800;font-size:1.9rem;line-height:1.05}
+.phone .story .cta{background:#fff;color:#7A2E1F;border-radius:99px;padding:.6rem 1rem;font-weight:800;text-align:center;font-size:.85rem}
+.phone .views{position:absolute;bottom:12px;left:0;right:0;text-align:center;color:#fff;font-size:.8rem;opacity:.9}
+.phone .views b{font-family:var(--f-mono)}
+.section{padding-block:56px}
+.steps{counter-reset:s;display:grid;gap:14px}
+.steps li{list-style:none;display:grid;grid-template-columns:44px 1fr;gap:12px;align-items:start}
+.steps li::before{counter-increment:s;content:counter(s);width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-family:var(--f-display);font-weight:800;border:3px dashed var(--saffron);color:var(--ink)}
+:root[data-theme="dark"] .steps li::before{color:var(--saffron)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .steps li::before{color:var(--saffron)}}
+.steps{padding:0;margin:0}
+.calc{display:grid;gap:14px}
+.calc output{font-family:var(--f-mono);font-weight:700;font-size:2rem;color:var(--ink)}
+:root[data-theme="dark"] .calc output{color:var(--saffron)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .calc output{color:var(--saffron)}}
+input[type=range]{padding:0;border:none;background:none;accent-color:var(--saffron)}
+footer{border-top:1px solid var(--line);padding-block:28px;color:var(--muted);font-size:.85rem}
+
+/* Modale */
+.modal{position:fixed;inset:0;z-index:50;background:rgba(10,20,18,.55);display:grid;place-items:end center;padding:16px;padding-bottom:max(16px,env(safe-area-inset-bottom,0px))}
+@media(min-width:640px){.modal{place-items:center}}
+.modal .card{width:min(520px,100%);max-height:88vh;overflow:auto}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:max(20px,calc(env(safe-area-inset-bottom,0px) + 12px));z-index:60;background:var(--text);color:var(--bg);padding:.75rem 1.1rem;border-radius:12px;font-weight:600;box-shadow:var(--shadow);max-width:calc(100vw - 32px)}
+.toast.err{background:var(--bad);color:#fff}
+.chart svg{width:100%;height:auto;display:block}
+.chart text{fill:var(--muted);font:11px var(--f-mono)}
+main{padding-block:24px 64px}
+.page-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+.ring{flex:none}
+.spinner{width:22px;height:22px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--saffron);animation:spin .8s linear infinite;margin:40px auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#/" aria-label="StatuPub, accueil">
+      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><g fill="none" stroke-width="3" stroke-linecap="round"><path d="M15 2.5a12.5 12.5 0 0 1 10.8 6.2" stroke="#E8A33D"/><path d="M27.3 13.2a12.5 12.5 0 0 1-3.1 10.3" stroke="#E8A33D"/><path d="M20.6 26.2a12.5 12.5 0 0 1-11.2 0" stroke="#F3F1EA"/><path d="M5.8 23.5a12.5 12.5 0 0 1-3.1-10.3" stroke="#F3F1EA" opacity=".6"/><path d="M4.2 8.7A12.5 12.5 0 0 1 15 2.5" stroke="#F3F1EA" opacity=".35"/></g><circle cx="15" cy="15" r="5" fill="#E8A33D"/></svg>
+      StatuPub
+    </a>
+    <nav id="nav"></nav>
+  </div>
+</header>
+<div id="app"><div class="spinner" role="status" aria-label="Chargement"></div></div>
+<div id="modal-root"></div>
+
+<script>
+/* ==================== Configuration ==================== */
+const SUPABASE_URL = "https://zqqtqopcrlxvsxvqmfjo.supabase.co";
+const SUPABASE_KEY = "sb_publishable_ELwnBEHmoxzb1NemI_nAig_YdEish0f";
+const TRACK_BASE = SUPABASE_URL + "/functions/v1/go/";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const state = { session: null, profile: null, settings: null };
+const $ = (s, el = document) => el.querySelector(s);
+const app = $("#app");
+
+/* ==================== Utilitaires ==================== */
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fcfa = (n) => new Intl.NumberFormat("fr-FR").format(Math.round(Number(n) || 0));
+const money = (n) => `<span class="num">${fcfa(n)}</span><span class="unit">FCFA</span>`;
+const dateFr = (d) => new Date(d).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+const dateTimeFr = (d) => new Date(d).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const METHODS = { wave: "Wave", orange_money: "Orange Money", free_money: "Free Money", autre: "Autre" };
+const STATUS = {
+  en_attente: ["En validation", "p-warn"], active: ["Active", "p-ok"], pause: ["En pause", "p-info"],
+  terminee: ["Terminée", "p-mute"], rejetee: ["Refusée", "p-bad"], validee: ["Validé", "p-ok"],
+};
+const pill = (s) => { const [t, c] = STATUS[s] || [s, "p-mute"]; return `<span class="pill ${c}">${t}</span>`; };
+const REASONS = { doublon: "Doublon", robot: "Robot", meme_appareil: "Même appareil", limite_ip: "Limite IP", plafond_journalier: "Plafond du jour", budget_epuise: "Budget épuisé", campagne_inactive: "Campagne arrêtée", diffuseur_bloque: "Diffuseur bloqué" };
+
+function toast(msg, err = false) {
+  const t = document.createElement("div");
+  t.className = "toast" + (err ? " err" : "");
+  t.setAttribute("role", "status");
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), err ? 5000 : 2800);
+}
+function errMsg(e) {
+  const m = e?.message || String(e);
+  if (/Invalid login credentials/i.test(m)) return "E-mail ou mot de passe incorrect.";
+  if (/Email not confirmed/i.test(m)) return "Confirmez d'abord votre adresse e-mail (lien reçu par e-mail).";
+  if (/User already registered/i.test(m)) return "Un compte existe déjà avec cet e-mail. Connectez-vous.";
+  if (/Password should be/i.test(m)) return "Le mot de passe doit contenir au moins 6 caractères.";
+  if (/rate limit/i.test(m)) return "Trop de tentatives. Patientez quelques minutes.";
+  return m;
+}
+async function rpc(fn, args) {
+  const { data, error } = await sb.rpc(fn, args);
+  if (error) throw error;
+  return data;
+}
+async function copy(text, btn) {
+  try { await navigator.clipboard.writeText(text); toast("Copié !"); }
+  catch { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); toast("Copié !"); } catch { toast("Sélectionnez et copiez le texte manuellement", true); } ta.remove(); }
+}
+function busy(btn, on) { if (!btn) return; btn.disabled = on; if (on) { btn.dataset.t = btn.innerHTML; btn.innerHTML = "Patientez…"; } else if (btn.dataset.t) btn.innerHTML = btn.dataset.t; }
+
+function openModal(html, onMount) {
+  const root = $("#modal-root");
+  root.innerHTML = `<div class="modal" role="dialog" aria-modal="true"><div class="card stack">${html}</div></div>`;
+  const m = root.firstElementChild;
+  m.addEventListener("click", (e) => { if (e.target === m || e.target.closest("[data-close]")) closeModal(); });
+  document.addEventListener("keydown", escClose);
+  onMount?.(m);
+  m.querySelector("input,select,textarea,button")?.focus();
+}
+function escClose(e) { if (e.key === "Escape") closeModal(); }
+function closeModal() { $("#modal-root").innerHTML = ""; document.removeEventListener("keydown", escClose); }
+
+/* Anneau segmenté façon statut : n segments, k remplis */
+function ring(frac, size = 56, segs = 12) {
+  const r = size / 2 - 4, c = size / 2, gap = 6, on = Math.round(Math.max(0, Math.min(1, frac)) * segs);
+  let p = "";
+  for (let i = 0; i < segs; i++) {
+    const a0 = (i / segs) * 360 + gap / 2 - 90, a1 = ((i + 1) / segs) * 360 - gap / 2 - 90;
+    const x0 = c + r * Math.cos(a0 * Math.PI / 180), y0 = c + r * Math.sin(a0 * Math.PI / 180);
+    const x1 = c + r * Math.cos(a1 * Math.PI / 180), y1 = c + r * Math.sin(a1 * Math.PI / 180);
+    p += `<path d="M${x0.toFixed(2)} ${y0.toFixed(2)}A${r} ${r} 0 0 1 ${x1.toFixed(2)} ${y1.toFixed(2)}" stroke="${i < on ? "var(--saffron)" : "var(--line)"}"/>`;
+  }
+  return `<svg class="ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true"><g fill="none" stroke-width="4" stroke-linecap="round">${p}</g></svg>`;
+}
+
+/* Graphique en barres : clics valides par jour */
+function barChart(rows, key = "valid_clicks", label = "clics") {
+  if (!rows?.length) return `<div class="empty small">Pas encore de clics. Les statistiques apparaîtront ici dès le premier clic.</div>`;
+  const days = [];
+  const map = Object.fromEntries(rows.map((r) => [r.day, r]));
+  const last = new Date(); const n = 14;
+  for (let i = n - 1; i >= 0; i--) { const d = new Date(last); d.setDate(d.getDate() - i); const k = d.toISOString().slice(0, 10); days.push({ k, v: Number(map[k]?.[key] || 0) }); }
+  const W = 560, H = 180, pl = 34, pb = 24, pt = 14, max = Math.max(1, ...days.map((d) => d.v));
+  const step = (W - pl) / n, bw = step * 0.62;
+  const ticks = [0, Math.ceil(max / 2), max];
+  let s = ticks.map((t) => { const y = pt + (H - pt - pb) * (1 - t / max); return `<line x1="${pl}" x2="${W}" y1="${y}" y2="${y}" stroke="var(--line)"/><text x="${pl - 6}" y="${y + 4}" text-anchor="end">${t}</text>`; }).join("");
+  days.forEach((d, i) => {
+    const h = (H - pt - pb) * (d.v / max), x = pl + i * step + (step - bw) / 2, y = H - pb - h;
+    s += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(h, d.v ? 2 : 0).toFixed(1)}" rx="3" fill="${i === n - 1 ? "var(--saffron)" : "var(--ink-2)"}"><title>${d.k} : ${d.v} ${label}</title></rect>`;
+    if (i % 2 === 1 || i === n - 1) s += `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle">${d.k.slice(8)}/${d.k.slice(5, 7)}</text>`;
+  });
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Clics valides par jour sur 14 jours">${s}</svg></div>`;
+}
+
+/* ==================== Navigation ==================== */
+function renderNav() {
+  const nav = $("#nav");
+  if (!state.profile) {
+    nav.innerHTML = `<a class="btn btn-ghost btn-sm" href="#/connexion">Connexion</a><a class="btn btn-primary btn-sm" href="#/inscription">Créer un compte</a>`;
+  } else {
+    const home = { annonceur: "#/annonceur", diffuseur: "#/diffuseur", admin: "#/admin" }[state.profile.role];
+    nav.innerHTML = `<span class="who">${esc(state.profile.full_name || state.session.user.email)}</span>
+      <a class="btn btn-ghost btn-sm" href="${home}">Mon espace</a>
+      <button class="btn btn-ghost btn-sm" id="logout" aria-label="Déconnexion">Quitter</button>`;
+    $("#logout").onclick = async () => { await sb.auth.signOut(); location.hash = "#/"; };
+  }
+}
+
+async function loadProfile() {
+  const { data: { session } } = await sb.auth.getSession();
+  state.session = session;
+  state.profile = null;
+  if (session) {
+    const { data } = await sb.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
+    state.profile = data;
+  }
+  if (!state.settings) {
+    const { data } = await sb.from("settings").select("*").eq("id", 1).maybeSingle();
+    state.settings = data || {};
+  }
+}
+
+async function route() {
+  closeModal();
+  const h = location.hash.replace(/^#/, "") || "/";
+  const [path, q] = h.split("?");
+  renderNav();
+  window.scrollTo(0, 0);
+  const role = state.profile?.role;
+  const guard = (r) => { if (!state.profile) { location.hash = "#/connexion"; return false; } if (role !== r) { location.hash = "#/" + role; return false; } return true; };
+  try {
+    if (path === "/connexion") return viewAuth("login");
+    if (path === "/inscription") return viewAuth("signup", new URLSearchParams(q).get("role"));
+    if (path === "/annonceur") return guard("annonceur") && viewAnnonceur();
+    if (path.startsWith("/campagne/")) return guard("annonceur") && viewCampaign(path.split("/")[2]);
+    if (path === "/diffuseur") return guard("diffuseur") && viewDiffuseur();
+    if (path === "/admin") return guard("admin") && viewAdmin(new URLSearchParams(q).get("t") || "campagnes");
+    return viewHome();
+  } catch (e) {
+    console.error(e);
+    app.innerHTML = `<main class="wrap"><div class="notice warn"><div><b>Une erreur est survenue.</b><p>${esc(errMsg(e))}</p></div></div></main>`;
+  }
+}
+
+/* ==================== Accueil ==================== */
+function viewHome() {
+  if (state.profile && location.hash === "") { location.hash = "#/" + state.profile.role; return; }
+  const s = state.settings || {};
+  const pay = Math.floor((s.cpc_min || 25) * (s.payout_ratio || 0.5));
+  app.innerHTML = `
+  <section class="hero"><div class="wrap">
+    <div>
+      <p class="eyebrow" style="color:var(--saffron)">La régie pub des statuts WhatsApp</p>
+      <h1 style="margin-top:12px">Ton statut WhatsApp <em>te rapporte</em> à chaque clic.</h1>
+      <p class="lead">Les commerçants touchent leurs clients là où ils regardent vraiment : les statuts. Les diffuseurs publient des pubs et gagnent de l'argent, payé sur Wave ou Orange Money.</p>
+      <div class="row">
+        <a class="btn btn-primary" href="#/inscription?role=diffuseur">Gagner avec mon statut</a>
+        <a class="btn btn-ghost" style="color:var(--on-ink);border-color:rgba(243,241,234,.35)" href="#/inscription?role=annonceur">Faire de la pub</a>
+      </div>
+    </div>
+    <div class="phone" aria-hidden="true">
+      <div class="story">
+        <div class="seg"><i class="on"></i><i class="on"></i><i></i><i></i></div>
+        <div class="who"><span class="av"></span>Moussa · il y a 2 h</div>
+        <div class="big">Thiéboudienne livré en 30 min à Dakar</div>
+        <div style="opacity:.9;font-size:.9rem">-20 % sur ta première commande</div>
+        <div class="cta">Commander maintenant</div>
+        <div style="height:20px"></div>
+      </div>
+      <div class="views">Vu par <b>412</b> personnes</div>
+    </div>
+  </div></section>
+
+  <section class="section"><div class="wrap grid g2">
+    <div class="card stack">
+      <p class="eyebrow">Pour les diffuseurs</p>
+      <h2>Monétise ton statut en 4 étapes</h2>
+      <ol class="steps">
+        <li><div><b>Inscris-toi gratuitement</b><p class="muted small">Ton nom, ton numéro et le nombre moyen de vues de tes statuts.</p></div></li>
+        <li><div><b>Abonne-toi à la Chaîne StatuPub</b><p class="muted small">C'est là qu'on annonce chaque nouvelle campagne.</p></div></li>
+        <li><div><b>Publie la pub avec ton lien unique</b><p class="muted small">Visuel et texte prêts à copier. Ton lien compte chaque clic pour toi.</p></div></li>
+        <li><div><b>Retire tes gains</b><p class="muted small">Sur Wave ou Orange Money, à partir de ${fcfa(s.min_withdrawal || 1000)} FCFA.</p></div></li>
+      </ol>
+    </div>
+    <div class="card stack">
+      <p class="eyebrow">Pour les annonceurs</p>
+      <h2>Payez seulement les vrais clics</h2>
+      <ol class="steps">
+        <li><div><b>Créez votre campagne</b><p class="muted small">Votre visuel, votre message, le lien vers votre boutique ou votre WhatsApp.</p></div></li>
+        <li><div><b>Fixez votre budget</b><p class="muted small">À partir de ${fcfa(s.min_budget || 2500)} FCFA, prix du clic dès ${fcfa(s.cpc_min || 25)} FCFA.</p></div></li>
+        <li><div><b>Des centaines de statuts la diffusent</b><p class="muted small">Votre pub est vue dans les statuts de vrais gens de votre ville.</p></div></li>
+        <li><div><b>Suivez vos résultats en direct</b><p class="muted small">Clics, dépenses, nombre de diffuseurs. Robots et doublons ne vous coûtent rien.</p></div></li>
+      </ol>
+    </div>
+  </div></section>
+
+  <section class="section" style="padding-top:0"><div class="wrap grid g2">
+    <div class="card calc">
+      <p class="eyebrow">Simulateur diffuseur</p>
+      <h3>Combien peux-tu gagner ?</h3>
+      <label for="sim-views">Vues moyennes de ton statut : <span id="sim-v" class="num">300</span></label>
+      <input id="sim-views" type="range" min="50" max="2000" step="50" value="300">
+      <label for="sim-rate">Personnes qui cliquent : <span id="sim-r" class="num">5 %</span></label>
+      <input id="sim-rate" type="range" min="1" max="15" step="1" value="5">
+      <div><p class="muted small">Par campagne publiée, à ${fcfa(pay)} FCFA le clic</p><output id="sim-out">0 FCFA</output></div>
+      <p class="muted small">Estimation. Le gain réel dépend de l'intérêt de ton audience pour la pub.</p>
+    </div>
+    <div class="card stack">
+      <p class="eyebrow">Clics protégés</p>
+      <h3>Comment on compte un clic</h3>
+      <p class="muted">Chaque diffuseur a un lien unique par campagne. Un clic n'est payé que s'il vient d'une vraie personne :</p>
+      <ul class="stack small" style="padding-left:18px;margin:0;gap:8px">
+        <li>une personne ne compte qu'une fois par campagne ;</li>
+        <li>les robots et les aperçus de lien WhatsApp ne comptent pas ;</li>
+        <li>les clics répétés depuis un même appareil ou une même connexion sont bloqués ;</li>
+        <li>les gains sont vérifiés pendant ${s.hold_hours || 24} h avant de pouvoir être retirés.</li>
+      </ul>
+    </div>
+  </div></section>
+  <footer><div class="wrap row between"><span>StatuPub · une plateforme West Africa SN Production · Dakar</span><span>Paiements Wave et Orange Money</span></div></footer>`;
+  const v = $("#sim-views"), r = $("#sim-rate");
+  const upd = () => { $("#sim-v").textContent = v.value; $("#sim-r").textContent = r.value + " %"; $("#sim-out").textContent = fcfa(v.value * r.value / 100 * pay) + " FCFA"; };
+  v.oninput = r.oninput = upd; upd();
+}
+
+/* ==================== Connexion / Inscription ==================== */
+function viewAuth(mode, roleParam) {
+  if (state.profile) { location.hash = "#/" + state.profile.role; return; }
+  const role = roleParam === "annonceur" ? "annonceur" : "diffuseur";
+  app.innerHTML = `<main class="wrap" style="max-width:520px">
+    <div class="card stack">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" aria-selected="${mode === "login"}" data-m="login">Connexion</button>
+        <button class="tab" role="tab" aria-selected="${mode === "signup"}" data-m="signup">Créer un compte</button>
+      </div>
+      <form id="auth-form" class="stack" novalidate>
+        <div id="signup-fields" class="stack" ${mode === "signup" ? "" : "hidden"}>
+          <fieldset style="border:none;padding:0;margin:0" class="stack">
+            <legend class="eyebrow" style="margin-bottom:8px">Je suis</legend>
+            <div class="grid g2">
+              <label class="check card flat" style="padding:12px"><input type="radio" name="role" id="role-d" value="diffuseur" ${role === "diffuseur" ? "checked" : ""}><span><b>Diffuseur</b><br><span class="muted small">Je gagne avec mon statut</span></span></label>
+              <label class="check card flat" style="padding:12px"><input type="radio" name="role" id="role-a" value="annonceur" ${role === "annonceur" ? "checked" : ""}><span><b>Annonceur</b><br><span class="muted small">Je veux faire de la pub</span></span></label>
+            </div>
+          </fieldset>
+          <label for="f-name">Nom complet<input id="f-name" autocomplete="name" placeholder="Awa Diop"></label>
+          <div class="grid g2">
+            <label for="f-phone">Téléphone<input id="f-phone" type="tel" autocomplete="tel" placeholder="77 123 45 67"></label>
+            <label for="f-city">Ville<input id="f-city" placeholder="Dakar"></label>
+          </div>
+          <label for="f-company" id="company-wrap" ${role === "annonceur" ? "" : "hidden"}>Entreprise ou boutique<input id="f-company" placeholder="Boutique Awa Mode"></label>
+        </div>
+        <label for="f-email">E-mail<input id="f-email" type="email" autocomplete="email" required placeholder="vous@exemple.com"></label>
+        <label for="f-pass">Mot de passe<input id="f-pass" type="password" autocomplete="${mode === "login" ? "current-password" : "new-password"}" required minlength="6" placeholder="6 caractères minimum"></label>
+        <button class="btn btn-primary" id="auth-btn" type="submit">${mode === "login" ? "Me connecter" : "Créer mon compte"}</button>
+        ${mode === "login" ? `<button type="button" class="btn btn-ghost btn-sm" id="forgot">Mot de passe oublié ?</button>` : ""}
+      </form>
+    </div></main>`;
+  app.querySelectorAll(".tab").forEach((t) => t.onclick = () => location.hash = t.dataset.m === "login" ? "#/connexion" : "#/inscription?role=" + (app.querySelector("input[name=role]:checked")?.value || role));
+  app.querySelectorAll("input[name=role]").forEach((r) => r.onchange = () => $("#company-wrap").hidden = r.value !== "annonceur" || !r.checked);
+  $("#forgot")?.addEventListener("click", async () => {
+    const email = $("#f-email").value.trim();
+    if (!email) return toast("Entrez d'abord votre e-mail", true);
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+    toast(error ? errMsg(error) : "E-mail de réinitialisation envoyé", !!error);
+  });
+  $("#auth-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const btn = $("#auth-btn"), email = $("#f-email").value.trim(), password = $("#f-pass").value;
+    if (!/^\S+@\S+\.\S+$/.test(email)) return toast("Adresse e-mail invalide", true);
+    if (password.length < 6) return toast("Mot de passe : 6 caractères minimum", true);
+    busy(btn, true);
+    try {
+      if (mode === "login") {
+        const { error } = await sb.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      } else {
+        const meta = { role: app.querySelector("input[name=role]:checked").value, full_name: $("#f-name").value.trim(), phone: $("#f-phone").value.trim(), city: $("#f-city").value.trim(), company: $("#f-company").value.trim() };
+        if (!meta.full_name || !meta.phone) { busy(btn, false); return toast("Nom et téléphone obligatoires", true); }
+        const { data, error } = await sb.auth.signUp({ email, password, options: { data: meta, emailRedirectTo: location.origin + location.pathname } });
+        if (error) throw error;
+        if (!data.session) {
+          app.innerHTML = `<main class="wrap" style="max-width:520px"><div class="card stack"><h2>Vérifiez votre e-mail</h2><p>Nous avons envoyé un lien de confirmation à <b>${esc(email)}</b>. Cliquez dessus, puis revenez vous connecter.</p><a class="btn btn-primary" href="#/connexion">Aller à la connexion</a></div></main>`;
+          return;
+        }
+      }
+      await loadProfile();
+      location.hash = "#/" + (state.profile?.role || "");
+    } catch (err) { toast(errMsg(err), true); busy(btn, false); }
+  };
+}
+
+/* ==================== ANNONCEUR ==================== */
+async function viewAnnonceur() {
+  app.innerHTML = `<div class="spinner"></div>`;
+  const [w, camps, rech] = await Promise.all([
+    rpc("annonceur_wallet").then((r) => r[0]), rpc("annonceur_campaigns"),
+    sb.from("recharges").select("*").order("created_at", { ascending: false }).limit(20).then((r) => r.data || []),
+  ]);
+  const active = camps.filter((c) => c.status === "active");
+  const totalClicks = camps.reduce((a, c) => a + Number(c.valid_clicks), 0);
+  const today = camps.reduce((a, c) => a + Number(c.clicks_today), 0);
+  const pend = rech.filter((r) => r.status === "en_attente");
+  app.innerHTML = `<main class="wrap">
+    <div class="page-head"><div><p class="eyebrow">Espace annonceur</p><h1 style="font-size:2rem">Bonjour ${esc((state.profile.full_name || "").split(" ")[0])}</h1></div>
+      <div class="row"><button class="btn btn-ghost" id="b-recharge">Recharger mon compte</button><button class="btn btn-primary" id="b-new">Nouvelle campagne</button></div></div>
+    ${pend.length ? `<div class="notice info" style="margin-bottom:16px"><div><b>${pend.length} recharge${pend.length > 1 ? "s" : ""} en cours de vérification</b><p class="small muted">Votre solde sera crédité dès que nous aurons confirmé la réception du paiement (en général sous 1 h, de 8 h à 22 h).</p></div></div>` : ""}
+    <div class="grid g4" style="margin-bottom:24px">
+      <div class="card wallet kpi"><span class="eyebrow">Solde disponible</span><span class="big">${fcfa(w.available)}</span><span class="small muted">FCFA pour de nouvelles campagnes</span></div>
+      <div class="card kpi"><span class="eyebrow">Budget engagé</span><div>${money(w.reserved - w.spent > 0 ? w.reserved - w.spent : 0)}</div><span class="small muted">réservé sur vos campagnes en cours</span></div>
+      <div class="card kpi"><span class="eyebrow">Total dépensé</span><div>${money(w.spent)}</div><span class="small muted">${fcfa(totalClicks)} clics valides au total</span></div>
+      <div class="card kpi"><span class="eyebrow">Aujourd'hui</span><div><span class="num">${fcfa(today)}</span><span class="unit">clics</span></div><span class="small muted">${active.length} campagne${active.length > 1 ? "s" : ""} active${active.length > 1 ? "s" : ""}</span></div>
+    </div>
+    <div class="stack">
+      <h2>Mes campagnes</h2>
+      ${camps.length ? `<div class="grid g2">${camps.map(campCard).join("")}</div>` :
+        `<div class="empty stack" style="align-items:center"><b style="color:var(--text)">Aucune campagne pour l'instant</b><span>Rechargez votre compte, puis créez votre première campagne : votre pub sera diffusée sur les statuts de nos diffuseurs.</span><button class="btn btn-primary" id="b-new2">Créer ma première campagne</button></div>`}
+      <h2 style="margin-top:16px">Historique des recharges</h2>
+      ${rech.length ? `<div class="table"><table><thead><tr><th>Date</th><th>Moyen</th><th>Référence</th><th class="n">Montant</th><th>Statut</th></tr></thead><tbody>
+        ${rech.map((r) => `<tr><td>${dateTimeFr(r.created_at)}</td><td>${METHODS[r.method]}</td><td>${esc(r.reference)}</td><td class="n">${fcfa(r.amount)}</td><td>${pill(r.status)}${r.admin_note ? `<div class="small muted">${esc(r.admin_note)}</div>` : ""}</td></tr>`).join("")}
+      </tbody></table></div>` : `<p class="muted small">Aucune recharge. Le paiement se fait par Wave ou Orange Money.</p>`}
+    </div></main>`;
+  $("#b-recharge").onclick = rechargeModal;
+  $("#b-new").onclick = () => newCampaignModal(w.available);
+  $("#b-new2")?.addEventListener("click", () => newCampaignModal(w.available));
+}
+
+function campCard(c) {
+  const frac = c.budget ? c.spent / c.budget : 0;
+  const clicksLeft = Math.floor((c.budget - c.spent) / c.cpc);
+  return `<a class="card stack" href="#/campagne/${c.id}" style="text-decoration:none">
+    <div class="row between" style="flex-wrap:nowrap;align-items:flex-start"><div style="min-width:0"><h3 style="overflow-wrap:anywhere">${esc(c.title)}</h3><p class="small muted">Créée le ${dateFr(c.created_at)} · ${fcfa(c.cpc)} FCFA / clic</p></div>${pill(c.status)}</div>
+    ${c.status === "rejetee" && c.reject_reason ? `<div class="notice warn small"><span><b>Motif :</b> ${esc(c.reject_reason)}</span></div>` : ""}
+    <div class="row" style="flex-wrap:nowrap">${ring(frac)}<div class="stack" style="gap:6px;flex:1;min-width:0">
+      <div class="row between small"><span>Dépensé <b class="num">${fcfa(c.spent)}</b> / ${fcfa(c.budget)} FCFA</span><span class="muted">${Math.round(frac * 100)} %</span></div>
+      <div class="bar"><i style="width:${Math.min(100, frac * 100).toFixed(1)}%"></i></div>
+    </div></div>
+    <div class="grid g3 small" style="grid-template-columns:repeat(3,1fr)">
+      <div><span class="muted">Clics</span><br><b class="num">${fcfa(c.valid_clicks)}</b></div>
+      <div><span class="muted">Diffuseurs</span><br><b class="num">${fcfa(c.diffuseurs)}</b></div>
+      <div><span class="muted">Clics restants</span><br><b class="num">${["terminee", "rejetee"].includes(c.status) ? "–" : fcfa(clicksLeft)}</b></div>
+    </div></a>`;
+}
+
+function rechargeModal() {
+  const s = state.settings || {};
+  openModal(`
+    <div class="row between"><h2>Recharger mon compte</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
+    <ol class="steps small">
+      <li><div><b>Envoyez le paiement</b>
+        <p class="muted">${s.wave_number ? `Wave : <b class="num">${esc(s.wave_number)}</b>` : ""}${s.wave_number && s.om_number ? " · " : ""}${s.om_number ? `Orange Money : <b class="num">${esc(s.om_number)}</b>` : ""}${!s.wave_number && !s.om_number ? "Les numéros de paiement seront affichés ici. Contactez StatuPub en attendant." : ""}</p></div></li>
+      <li><div><b>Déclarez-le ici</b><p class="muted">Indiquez le montant et la référence de la transaction (reçue par SMS).</p></div></li>
+      <li><div><b>Nous validons</b><p class="muted">Votre solde est crédité après vérification.</p></div></li>
+    </ol>
+    <form id="rc-form" class="stack">
+      <div class="grid g2">
+        <label for="rc-amount">Montant (FCFA)<input id="rc-amount" type="number" min="1000" step="500" value="10000" inputmode="numeric"></label>
+        <label for="rc-method">Moyen de paiement<select id="rc-method"><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="free_money">Free Money</option></select></label>
+      </div>
+      <label for="rc-ref">Référence de la transaction<input id="rc-ref" placeholder="Ex. : TXN-8F2K91 ou ID du SMS" maxlength="80"></label>
+      <button class="btn btn-primary" id="rc-btn">Déclarer mon paiement</button>
+    </form>`, (m) => {
+    $("#rc-form", m).onsubmit = async (e) => {
+      e.preventDefault(); const btn = $("#rc-btn", m);
+      const amount = parseInt($("#rc-amount", m).value, 10), ref = $("#rc-ref", m).value.trim();
+      if (!(amount >= 1000)) return toast("Montant minimum : 1 000 FCFA", true);
+      if (ref.length < 3) return toast("Indiquez la référence de la transaction", true);
+      busy(btn, true);
+      try { await rpc("request_recharge", { p_amount: amount, p_method: $("#rc-method", m).value, p_reference: ref }); closeModal(); toast("Paiement déclaré. Nous le vérifions."); viewAnnonceur(); }
+      catch (err) { toast(errMsg(err), true); busy(btn, false); }
+    };
+  });
+}
+
+function newCampaignModal(available) {
+  const s = state.settings || {};
+  const cpcMin = s.cpc_min || 25, minB = s.min_budget || 2500;
+  openModal(`
+    <div class="row between"><h2>Nouvelle campagne</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
+    ${available < minB ? `<div class="notice warn small"><span>Votre solde (${fcfa(available)} FCFA) est inférieur au budget minimum de ${fcfa(minB)} FCFA. <button type="button" class="btn btn-ink btn-sm" id="go-rc" style="margin-top:8px">Recharger d'abord</button></span></div>` : ""}
+    <form id="nc-form" class="stack">
+      <label for="nc-title">Nom de la campagne<span class="hint">Pour vous repérer. Les diffuseurs le voient aussi.</span><input id="nc-title" maxlength="80" placeholder="Promo Tabaski -20 %"></label>
+      <label for="nc-msg">Texte de la pub<span class="hint">Le texte que les diffuseurs copieront sous le visuel. Le lien est ajouté automatiquement.</span><textarea id="nc-msg" maxlength="700" placeholder="🐑 Tabaski approche ! -20 % sur tous les boubous chez Awa Mode, livraison gratuite à Dakar."></textarea></label>
+      <label for="nc-file">Visuel (image ou vidéo courte)<span class="hint">Format vertical conseillé (1080 × 1920). JPG, PNG, WEBP ou MP4, 16 Mo maximum.</span><input id="nc-file" type="file" accept="image/jpeg,image/png,image/webp,video/mp4"></label>
+      <label for="nc-url">Lien de destination<span class="hint">Votre site, votre page ou un lien wa.me vers votre WhatsApp.</span><input id="nc-url" type="url" placeholder="https://wa.me/221771234567"></label>
+      <div class="grid g2">
+        <label for="nc-cpc">Prix par clic (FCFA)<span class="hint">Minimum ${cpcMin}. Plus il est élevé, plus les diffuseurs la publient.</span><input id="nc-cpc" type="number" min="${cpcMin}" step="5" value="${Math.max(cpcMin, 50)}" inputmode="numeric"></label>
+        <label for="nc-budget">Budget total (FCFA)<span class="hint">Minimum ${fcfa(minB)}. Disponible : ${fcfa(available)}.</span><input id="nc-budget" type="number" min="${minB}" step="500" value="${Math.max(minB, Math.min(10000, available))}" inputmode="numeric"></label>
+      </div>
+      <div class="notice ok small" id="nc-est"></div>
+      <p class="small muted">Chaque campagne est vérifiée par notre équipe avant diffusion. Contenus interdits : arnaques, jeux d'argent, contenus pour adultes, fausses promesses de gains.</p>
+      <button class="btn btn-primary" id="nc-btn">Envoyer en validation</button>
+    </form>`, (m) => {
+    $("#go-rc", m)?.addEventListener("click", rechargeModal);
+    const est = () => { const c = +$("#nc-cpc", m).value || 0, b = +$("#nc-budget", m).value || 0;
+      $("#nc-est", m).innerHTML = c > 0 ? `<span>Environ <b class="num">${fcfa(Math.floor(b / c))}</b> clics garantis. Le diffuseur touche <b class="num">${fcfa(Math.floor(c * (s.payout_ratio || 0.5)))}</b> FCFA par clic.</span>` : ""; };
+    $("#nc-cpc", m).oninput = $("#nc-budget", m).oninput = est; est();
+    $("#nc-form", m).onsubmit = async (e) => {
+      e.preventDefault(); const btn = $("#nc-btn", m);
+      const title = $("#nc-title", m).value.trim(), msg = $("#nc-msg", m).value.trim(), url = $("#nc-url", m).value.trim();
+      const cpc = parseInt($("#nc-cpc", m).value, 10), budget = parseInt($("#nc-budget", m).value, 10), file = $("#nc-file", m).files[0];
+      if (title.length < 3) return toast("Donnez un nom à la campagne (3 caractères minimum)", true);
+      if (msg.length < 5) return toast("Écrivez le texte de la pub", true);
+      if (!/^https?:\/\/\S+\.\S+/.test(url)) return toast("Le lien doit commencer par https://", true);
+      if (file && file.size > 16 * 1024 * 1024) return toast("Visuel trop lourd (16 Mo maximum)", true);
+      busy(btn, true);
+      try {
+        let media = "";
+        if (file) {
+          const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
+          const path = `${state.session.user.id}/${Date.now()}.${ext}`;
+          const { error } = await sb.storage.from("creatives").upload(path, file, { contentType: file.type, upsert: false });
+          if (error) throw error;
+          media = sb.storage.from("creatives").getPublicUrl(path).data.publicUrl;
+        }
+        await rpc("create_campaign", { p_title: title, p_message: msg, p_media_url: media, p_target_url: url, p_cpc: cpc, p_budget: budget });
+        closeModal(); toast("Campagne envoyée en validation"); viewAnnonceur();
+      } catch (err) { toast(errMsg(err), true); busy(btn, false); }
+    };
+  });
+}
+
+async function viewCampaign(id) {
+  app.innerHTML = `<div class="spinner"></div>`;
+  const [camps, daily] = await Promise.all([rpc("annonceur_campaigns"), rpc("campaign_daily_stats", { p_id: id })]);
+  const c = camps.find((x) => x.id === id);
+  if (!c) { app.innerHTML = `<main class="wrap"><div class="empty">Campagne introuvable. <a href="#/annonceur">Retour</a></div></main>`; return; }
+  const frac = c.budget ? c.spent / c.budget : 0;
+  const isVid = /\.mp4($|\?)/i.test(c.media_url || "");
+  const totalInv = Number(c.invalid_clicks);
+  app.innerHTML = `<main class="wrap">
+    <a href="#/annonceur" class="small muted">← Mes campagnes</a>
+    <div class="page-head" style="margin-top:8px"><div style="min-width:0"><div class="row">${pill(c.status)}<span class="small muted">${fcfa(c.cpc)} FCFA par clic</span></div><h1 style="font-size:2rem;margin-top:8px;overflow-wrap:anywhere">${esc(c.title)}</h1></div>
+      <div class="row">
+        ${c.status === "active" ? `<button class="btn btn-ghost" data-st="pause">Mettre en pause</button>` : ""}
+        ${c.status === "pause" ? `<button class="btn btn-ok" data-st="active">Relancer</button>` : ""}
+        ${["active", "pause", "en_attente"].includes(c.status) ? `<button class="btn btn-bad" id="stop">Arrêter la campagne</button>` : ""}
+      </div></div>
+    <div id="stop-confirm" hidden class="notice warn" style="margin-bottom:16px"><div class="stack" style="gap:10px"><span><b>Arrêter définitivement ?</b> Le budget non dépensé (${fcfa(c.budget - c.spent)} FCFA) retourne sur votre solde. Les clics suivants ne seront plus comptés.</span><div class="row"><button class="btn btn-bad btn-sm" data-st="terminee">Oui, arrêter</button><button class="btn btn-ghost btn-sm" id="stop-no">Annuler</button></div></div></div>
+    <div class="grid g4" style="margin-bottom:24px">
+      <div class="card kpi"><span class="eyebrow">Clics valides</span><span class="num">${fcfa(c.valid_clicks)}</span><span class="small muted">${fcfa(c.clicks_today)} aujourd'hui</span></div>
+      <div class="card kpi"><span class="eyebrow">Dépensé</span><div>${money(c.spent)}</div><span class="small muted">sur ${fcfa(c.budget)} FCFA</span></div>
+      <div class="card kpi"><span class="eyebrow">Diffuseurs</span><span class="num">${fcfa(c.diffuseurs)}</span><span class="small muted">ont généré des clics</span></div>
+      <div class="card kpi"><span class="eyebrow">Clics bloqués</span><span class="num">${fcfa(totalInv)}</span><span class="small muted">robots et doublons, non facturés</span></div>
+    </div>
+    <div class="grid side">
+      <div class="card stack"><div class="row between"><h3>Clics valides par jour</h3><span class="small muted">14 derniers jours</span></div>${barChart(daily)}
+        <div class="row" style="flex-wrap:nowrap">${ring(frac, 64)}<div class="stack" style="gap:6px;flex:1"><span class="small">Budget utilisé : <b class="num">${Math.round(frac * 100)} %</b></span><div class="bar"><i style="width:${Math.min(100, frac * 100).toFixed(1)}%"></i></div><span class="small muted">Il reste environ ${fcfa(Math.floor((c.budget - c.spent) / c.cpc))} clics.</span></div></div>
+      </div>
+      <div class="card stack"><h3>Aperçu de la pub</h3>
+        ${c.media_url ? `<div class="ad-media">${isVid ? `<video src="${esc(c.media_url)}" controls playsinline muted></video>` : `<img src="${esc(c.media_url)}" alt="Visuel de la campagne">`}</div>` : `<div class="empty small">Pas de visuel : la pub sera diffusée en texte.</div>`}
+        <div class="ad-text">${esc(c.message)}</div>
+        <p class="small muted" style="overflow-wrap:anywhere">Destination : <a href="${esc(c.target_url)}" target="_blank" rel="noopener">${esc(c.target_url)}</a></p>
+      </div>
+    </div></main>`;
+  app.querySelectorAll("[data-st]").forEach((b) => b.onclick = async () => {
+    busy(b, true);
+    try { await rpc("set_campaign_status", { p_id: id, p_status: b.dataset.st }); toast("Campagne mise à jour"); viewCampaign(id); }
+    catch (err) { toast(errMsg(err), true); busy(b, false); }
+  });
+  $("#stop")?.addEventListener("click", () => $("#stop-confirm").hidden = false);
+  $("#stop-no")?.addEventListener("click", () => $("#stop-confirm").hidden = true);
+}
+
+/* ==================== DIFFUSEUR ==================== */
+async function viewDiffuseur() {
+  app.innerHTML = `<div class="spinner"></div>`;
+  const p = state.profile, s = state.settings || {};
+  const [w, camps, daily, wd] = await Promise.all([
+    rpc("diffuseur_wallet").then((r) => r[0]), rpc("available_campaigns"), rpc("diffuseur_daily_stats"),
+    sb.from("withdrawals").select("*").order("created_at", { ascending: false }).limit(20).then((r) => r.data || []),
+  ]);
+  const ready = p.channel_joined && p.avg_views > 0;
+  const totalClicks = daily.reduce((a, d) => a + Number(d.valid_clicks), 0);
+  app.innerHTML = `<main class="wrap">
+    <div class="page-head"><div><p class="eyebrow">Espace diffuseur</p><h1 style="font-size:2rem">Salut ${esc((p.full_name || "").split(" ")[0])} 👋</h1></div>
+      <button class="btn btn-primary" id="b-wd" ${w.available < (s.min_withdrawal || 1000) ? "disabled" : ""}>Retirer mes gains</button></div>
+    ${!ready ? onboardingCard(p, s) : ""}
+    <div class="grid g4" style="margin-bottom:24px">
+      <div class="card wallet kpi"><span class="eyebrow">Disponible au retrait</span><span class="big">${fcfa(w.available)}</span><span class="small muted">FCFA · retrait dès ${fcfa(s.min_withdrawal || 1000)}</span></div>
+      <div class="card kpi"><span class="eyebrow">En vérification</span><div>${money(w.pending)}</div><span class="small muted">disponible après ${s.hold_hours || 24} h</span></div>
+      <div class="card kpi"><span class="eyebrow">Déjà retiré</span><div>${money(w.withdrawn)}</div><span class="small muted">demandes comprises</span></div>
+      <div class="card kpi"><span class="eyebrow">Clics (30 jours)</span><span class="num">${fcfa(totalClicks)}</span><span class="small muted">clics valides sur tes liens</span></div>
+    </div>
+    <div class="stack">
+      <div class="row between"><h2>Campagnes à publier</h2>${s.whatsapp_channel_url ? `<a class="btn btn-ghost btn-sm" href="${esc(s.whatsapp_channel_url)}" target="_blank" rel="noopener">Ouvrir la Chaîne StatuPub</a>` : ""}</div>
+      ${camps.length ? `<div class="grid g3">${camps.map((c) => adCard(c, ready)).join("")}</div>` :
+        `<div class="empty">Aucune campagne disponible pour le moment. Les nouvelles campagnes sont annoncées sur la Chaîne WhatsApp StatuPub : reviens vite !</div>`}
+      <div class="grid g2" style="margin-top:16px">
+        <div class="card stack"><div class="row between"><h3>Mes clics valides</h3><span class="small muted">14 derniers jours</span></div>${barChart(daily)}</div>
+        <div class="card stack"><h3>Règles pour être payé</h3>
+          <ul class="small stack" style="padding-left:18px;margin:0;gap:8px">
+            <li>Publie le visuel <b>et</b> le texte avec <b>ton lien</b> sur ton statut.</li>
+            <li>Ne clique pas toi-même et ne demande pas à des groupes « clic contre clic » : ces clics sont détectés et non payés.</li>
+            <li>Une personne ne compte qu'une fois par campagne.</li>
+            <li>Les comptes qui trichent sont bloqués et leurs gains annulés.</li>
+          </ul>
+          <button class="btn btn-ghost btn-sm" id="b-profile" style="align-self:flex-start">Modifier mon profil</button>
+        </div>
+      </div>
+      <h2 style="margin-top:16px">Mes retraits</h2>
+      ${wd.length ? `<div class="table"><table><thead><tr><th>Date</th><th>Moyen</th><th>Numéro</th><th class="n">Montant</th><th>Statut</th></tr></thead><tbody>
+        ${wd.map((r) => `<tr><td>${dateTimeFr(r.created_at)}</td><td>${METHODS[r.method]}</td><td class="num">${esc(r.phone)}</td><td class="n">${fcfa(r.amount)}</td><td>${pill(r.status === "validee" ? "validee" : r.status)}${r.status === "validee" ? `<div class="small muted">Payé</div>` : ""}${r.admin_note ? `<div class="small muted">${esc(r.admin_note)}</div>` : ""}</td></tr>`).join("")}
+      </tbody></table></div>` : `<p class="muted small">Aucun retrait pour l'instant.</p>`}
+    </div></main>`;
+  bindOnboarding();
+  $("#b-wd").onclick = () => withdrawModal(w.available);
+  $("#b-profile").onclick = profileModal;
+  app.querySelectorAll("[data-link]").forEach((b) => b.onclick = async () => {
+    busy(b, true);
+    try { await rpc("get_my_link", { p_campaign: b.dataset.link }); toast("Ton lien est prêt !"); viewDiffuseur(); }
+    catch (err) { toast(errMsg(err), true); busy(b, false); }
+  });
+  app.querySelectorAll("[data-copy]").forEach((b) => b.onclick = () => copy(b.dataset.copy, b));
+}
+
+function onboardingCard(p, s) {
+  return `<div class="card stack" style="margin-bottom:24px;border-color:var(--saffron)">
+    <div class="row" style="flex-wrap:nowrap">${ring((p.channel_joined ? 1 : 0) * .5 + (p.avg_views > 0 ? .5 : 0), 52, 2)}<div><h3>Active ton compte en 2 étapes</h3><p class="small muted">Ensuite, tu pourras obtenir tes liens et commencer à gagner.</p></div></div>
+    <div class="grid g2">
+      <div class="card flat stack" style="box-shadow:none">
+        <b>1. Abonne-toi à la Chaîne WhatsApp StatuPub</b>
+        <p class="small muted">Chaque nouvelle campagne y est annoncée en premier.</p>
+        ${s.whatsapp_channel_url ? `<a class="btn btn-ink btn-sm" href="${esc(s.whatsapp_channel_url)}" target="_blank" rel="noopener" style="align-self:flex-start">Rejoindre la Chaîne</a>` : `<p class="small">Le lien de la Chaîne sera bientôt disponible ici.</p>`}
+        <label class="check small"><input type="checkbox" id="ob-joined" ${p.channel_joined ? "checked" : ""}> Je suis abonné(e) à la Chaîne StatuPub</label>
+      </div>
+      <div class="card flat stack" style="box-shadow:none">
+        <b>2. Indique tes vues moyennes</b>
+        <p class="small muted">Regarde « Vu par » sur tes derniers statuts et donne la moyenne.</p>
+        <label for="ob-views">Vues par statut<input id="ob-views" type="number" min="1" max="100000" inputmode="numeric" value="${p.avg_views || ""}" placeholder="300"></label>
+      </div>
+    </div>
+    <button class="btn btn-primary" id="ob-save" style="align-self:flex-start">Activer mon compte</button>
+  </div>`;
+}
+function bindOnboarding() {
+  const b = $("#ob-save"); if (!b) return;
+  b.onclick = async () => {
+    const joined = $("#ob-joined").checked, views = parseInt($("#ob-views").value, 10);
+    if (!joined) return toast("Abonne-toi d'abord à la Chaîne StatuPub", true);
+    if (!(views > 0)) return toast("Indique ton nombre moyen de vues", true);
+    busy(b, true);
+    const { error } = await sb.from("profiles").update({ channel_joined: true, avg_views: views }).eq("id", state.profile.id);
+    if (error) { toast(errMsg(error), true); busy(b, false); return; }
+    await loadProfile(); toast("Compte activé !"); viewDiffuseur();
+  };
+}
+
+function adCard(c, ready) {
+  const link = c.my_code ? TRACK_BASE + c.my_code : "";
+  const text = c.my_code ? `${c.message}\n\n👉 ${link}` : "";
+  const isVid = /\.mp4($|\?)/i.test(c.media_url || "");
+  return `<article class="card ad">
+    <div class="row between" style="flex-wrap:nowrap;align-items:flex-start"><h3 style="min-width:0;overflow-wrap:anywhere">${esc(c.title)}</h3><span class="gain">+${fcfa(c.payout)} F</span></div>
+    <p class="small muted" style="margin-top:-8px">par clic · encore ${fcfa(c.remaining_clicks)} clics à gagner</p>
+    ${c.media_url ? `<div class="ad-media">${isVid ? `<video src="${esc(c.media_url)}" controls playsinline muted preload="metadata"></video>` : `<img src="${esc(c.media_url)}" alt="Visuel à publier" loading="lazy">`}</div>` : ""}
+    <div class="ad-text">${esc(c.message)}</div>
+    ${c.my_code ? `
+      <div class="linkbox"><span>${esc(link)}</span></div>
+      <div class="row">
+        <button class="btn btn-primary btn-sm" data-copy="${esc(text)}">Copier texte + lien</button>
+        ${c.media_url ? `<a class="btn btn-ghost btn-sm" href="${esc(c.media_url)}" target="_blank" rel="noopener" download>Télécharger le visuel</a>` : ""}
+        <a class="btn btn-ghost btn-sm" href="https://wa.me/?text=${encodeURIComponent(text)}" target="_blank" rel="noopener">Envoyer sur WhatsApp</a>
+      </div>
+      <p class="small muted">Tes résultats : <b class="num">${fcfa(c.my_valid_clicks)}</b> clics · <b class="num">${fcfa(c.my_earnings)}</b> FCFA gagnés</p>`
+      : `<button class="btn btn-ink" data-link="${c.id}" ${ready ? "" : "disabled title=\"Active ton compte d'abord\""}>Obtenir mon lien</button>`}
+  </article>`;
+}
+
+function withdrawModal(available) {
+  const s = state.settings || {}, p = state.profile;
+  openModal(`<div class="row between"><h2>Retirer mes gains</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
+    <p class="muted small">Disponible : <b class="num">${fcfa(available)}</b> FCFA. Le paiement est envoyé sous 24 à 48 h.</p>
+    <form id="wd-form" class="stack">
+      <label for="wd-amount">Montant (FCFA)<input id="wd-amount" type="number" min="${s.min_withdrawal || 1000}" max="${available}" value="${available}" inputmode="numeric"></label>
+      <div class="grid g2">
+        <label for="wd-method">Recevoir sur<select id="wd-method"><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="free_money">Free Money</option></select></label>
+        <label for="wd-phone">Numéro<input id="wd-phone" type="tel" value="${esc(p.phone)}" placeholder="77 123 45 67"></label>
+      </div>
+      <button class="btn btn-primary" id="wd-btn">Demander le retrait</button>
+    </form>`, (m) => {
+    $("#wd-form", m).onsubmit = async (e) => {
+      e.preventDefault(); const btn = $("#wd-btn", m);
+      const amount = parseInt($("#wd-amount", m).value, 10), phone = $("#wd-phone", m).value.replace(/\s+/g, "");
+      if (!(amount > 0)) return toast("Montant invalide", true);
+      if (phone.length < 7) return toast("Numéro invalide", true);
+      busy(btn, true);
+      try { await rpc("request_withdrawal", { p_amount: amount, p_method: $("#wd-method", m).value, p_phone: phone }); closeModal(); toast("Demande de retrait envoyée"); viewDiffuseur(); }
+      catch (err) { toast(errMsg(err), true); busy(btn, false); }
+    };
+  });
+}
+
+function profileModal() {
+  const p = state.profile;
+  openModal(`<div class="row between"><h2>Mon profil</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
+    <form id="pf-form" class="stack">
+      <label for="pf-name">Nom complet<input id="pf-name" value="${esc(p.full_name)}"></label>
+      <div class="grid g2"><label for="pf-phone">Téléphone<input id="pf-phone" type="tel" value="${esc(p.phone)}"></label>
+      <label for="pf-city">Ville<input id="pf-city" value="${esc(p.city)}"></label></div>
+      <label for="pf-views">Vues moyennes par statut<input id="pf-views" type="number" min="0" value="${p.avg_views}"></label>
+      <button class="btn btn-primary" id="pf-btn">Enregistrer</button>
+    </form>`, (m) => {
+    $("#pf-form", m).onsubmit = async (e) => {
+      e.preventDefault(); const btn = $("#pf-btn", m); busy(btn, true);
+      const { error } = await sb.from("profiles").update({ full_name: $("#pf-name", m).value.trim(), phone: $("#pf-phone", m).value.trim(), city: $("#pf-city", m).value.trim(), avg_views: parseInt($("#pf-views", m).value, 10) || 0 }).eq("id", p.id);
+      if (error) { toast(errMsg(error), true); busy(btn, false); return; }
+      await loadProfile(); closeModal(); toast("Profil enregistré"); viewDiffuseur();
+    };
+  });
+}
+
+/* ==================== ADMIN ==================== */
+async function viewAdmin(tab) {
+  app.innerHTML = `<div class="spinner"></div>`;
+  const ov = await rpc("admin_overview");
+  const tabs = [["campagnes", "Campagnes", ov.campagnes_attente], ["recharges", "Recharges", ov.recharges_attente], ["retraits", "Retraits", ov.retraits_attente],
+    ["diffuseurs", "Diffuseurs"], ["annonceurs", "Annonceurs"], ["clics", "Clics"], ["reglages", "Réglages"]];
+  const marge = ov.ca_total - ov.reverse_total;
+  app.innerHTML = `<main class="wrap">
+    <div class="page-head"><div><p class="eyebrow">Administration</p><h1 style="font-size:2rem">Tableau de bord StatuPub</h1></div><button class="btn btn-ghost btn-sm" id="refresh">Actualiser</button></div>
+    <div class="grid g4" style="margin-bottom:20px">
+      <div class="card wallet kpi"><span class="eyebrow">Marge plateforme</span><span class="big">${fcfa(marge)}</span><span class="small muted">FCFA · ${fcfa(ov.ca_total)} facturés, ${fcfa(ov.reverse_total)} reversés</span></div>
+      <div class="card kpi"><span class="eyebrow">Clics aujourd'hui</span><span class="num">${fcfa(ov.clics_valides_jour)}</span><span class="small muted">${fcfa(ov.clics_invalides_jour)} bloqués (${ov.clics_valides_jour + ov.clics_invalides_jour ? Math.round(100 * ov.clics_invalides_jour / (ov.clics_valides_jour + ov.clics_invalides_jour)) : 0} %)</span></div>
+      <div class="card kpi"><span class="eyebrow">Utilisateurs</span><span class="num">${fcfa(ov.diffuseurs)}</span><span class="small muted">diffuseurs · ${fcfa(ov.annonceurs)} annonceurs</span></div>
+      <div class="card kpi"><span class="eyebrow">À payer</span><div>${money(ov.retraits_attente_montant)}</div><span class="small muted">${ov.retraits_attente} retrait(s) en attente</span></div>
+    </div>
+    <div class="tabs" role="tablist">${tabs.map(([k, l, n]) => `<button class="tab" role="tab" aria-selected="${k === tab}" data-t="${k}">${l}${n ? `<span class="count">${n}</span>` : ""}</button>`).join("")}</div>
+    <div id="admin-body" style="margin-top:20px"><div class="spinner"></div></div></main>`;
+  app.querySelectorAll("[data-t]").forEach((b) => b.onclick = () => location.hash = "#/admin?t=" + b.dataset.t);
+  $("#refresh").onclick = () => viewAdmin(tab);
+  const body = $("#admin-body");
+  const fn = { campagnes: adminCampaigns, recharges: adminRecharges, retraits: adminWithdrawals, diffuseurs: adminDiffuseurs, annonceurs: adminAnnonceurs, clics: adminClicks, reglages: adminSettings }[tab] || adminCampaigns;
+  try { await fn(body, () => viewAdmin(tab)); } catch (e) { body.innerHTML = `<div class="notice warn">${esc(errMsg(e))}</div>`; }
+}
+
+async function adminCampaigns(body, reload) {
+  const { data, error } = await sb.from("campaigns").select("*, profiles(full_name, company, phone)").order("created_at", { ascending: false }).limit(100);
+  if (error) throw error;
+  const pending = data.filter((c) => c.status === "en_attente"), others = data.filter((c) => c.status !== "en_attente");
+  body.innerHTML = `<div class="stack">
+    <h2>À valider (${pending.length})</h2>
+    ${pending.length ? `<div class="grid g2">${pending.map((c) => `<div class="card stack">
+      <div class="row between" style="flex-wrap:nowrap;align-items:flex-start"><div style="min-width:0"><h3 style="overflow-wrap:anywhere">${esc(c.title)}</h3><p class="small muted">${esc(c.profiles?.company || c.profiles?.full_name)} · ${esc(c.profiles?.phone)} · ${dateTimeFr(c.created_at)}</p></div>${pill(c.status)}</div>
+      ${c.media_url ? `<div class="ad-media" style="max-height:240px">${/\.mp4/i.test(c.media_url) ? `<video src="${esc(c.media_url)}" controls muted playsinline></video>` : `<img src="${esc(c.media_url)}" alt="Visuel">`}</div>` : ""}
+      <div class="ad-text">${esc(c.message)}</div>
+      <p class="small" style="overflow-wrap:anywhere">Lien : <a href="${esc(c.target_url)}" target="_blank" rel="noopener">${esc(c.target_url)}</a></p>
+      <p class="small"><b class="num">${fcfa(c.cpc)}</b> FCFA/clic (diffuseur : ${fcfa(c.payout)}) · budget <b class="num">${fcfa(c.budget)}</b> FCFA</p>
+      <div class="row"><button class="btn btn-ok btn-sm" data-ok="${c.id}">Approuver</button>
+        <input id="rej-${c.id}" placeholder="Motif du refus" style="flex:1;min-width:140px;padding:.45rem .7rem"><button class="btn btn-bad btn-sm" data-no="${c.id}">Refuser</button></div>
+    </div>`).join("")}</div>` : `<div class="empty">Aucune campagne en attente.</div>`}
+    <h2 style="margin-top:12px">Toutes les campagnes</h2>
+    <div class="table"><table><thead><tr><th>Campagne</th><th>Annonceur</th><th class="n">Prix/clic</th><th class="n">Dépensé</th><th class="n">Budget</th><th>Statut</th><th></th></tr></thead><tbody>
+    ${others.map((c) => `<tr><td>${esc(c.title)}</td><td>${esc(c.profiles?.company || c.profiles?.full_name)}</td><td class="n">${fcfa(c.cpc)}</td><td class="n">${fcfa(c.spent)}</td><td class="n">${fcfa(c.budget)}</td><td>${pill(c.status)}</td>
+      <td>${c.status === "active" ? `<button class="btn btn-ghost btn-sm" data-pause="${c.id}">Pause</button>` : c.status === "pause" ? `<button class="btn btn-ghost btn-sm" data-resume="${c.id}">Relancer</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Aucune campagne.</td></tr>`}
+    </tbody></table></div></div>`;
+  const act = async (b, fn, args, msg) => { busy(b, true); try { await rpc(fn, args); toast(msg); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } };
+  body.querySelectorAll("[data-ok]").forEach((b) => b.onclick = () => act(b, "admin_review_campaign", { p_id: b.dataset.ok, p_approve: true }, "Campagne approuvée et en ligne"));
+  body.querySelectorAll("[data-no]").forEach((b) => b.onclick = () => { const r = $("#rej-" + b.dataset.no).value.trim(); if (!r) return toast("Indiquez le motif du refus", true); act(b, "admin_review_campaign", { p_id: b.dataset.no, p_approve: false, p_reason: r }, "Campagne refusée, budget rendu"); });
+  body.querySelectorAll("[data-pause]").forEach((b) => b.onclick = () => act(b, "set_campaign_status", { p_id: b.dataset.pause, p_status: "pause" }, "Campagne en pause"));
+  body.querySelectorAll("[data-resume]").forEach((b) => b.onclick = () => act(b, "set_campaign_status", { p_id: b.dataset.resume, p_status: "active" }, "Campagne relancée"));
+}
+
+async function adminRequests(body, reload, table, fn, who, labelOk) {
+  const { data, error } = await sb.from(table).select(`*, profiles(full_name, company, phone)`).order("created_at", { ascending: false }).limit(150);
+  if (error) throw error;
+  const pend = data.filter((r) => r.status === "en_attente");
+  const row = (r, actions) => `<tr><td>${dateTimeFr(r.created_at)}</td><td>${esc(r.profiles?.company || r.profiles?.full_name)}<div class="small muted">${esc(r.profiles?.phone)}</div></td><td>${METHODS[r.method]}</td><td class="num">${esc(table === "recharges" ? r.reference : r.phone)}</td><td class="n">${fcfa(r.amount)}</td><td>${actions ? `<div class="row" style="flex-wrap:nowrap"><button class="btn btn-ok btn-sm" data-ok="${r.id}">${labelOk}</button><button class="btn btn-bad btn-sm" data-no="${r.id}">Refuser</button></div>` : pill(r.status)}</td></tr>`;
+  const head = `<thead><tr><th>Date</th><th>${who}</th><th>Moyen</th><th>${table === "recharges" ? "Référence" : "Numéro"}</th><th class="n">Montant</th><th></th></tr></thead>`;
+  body.innerHTML = `<div class="stack">
+    ${table === "recharges" ? `<div class="notice info small"><span>Vérifiez sur votre téléphone Wave / Orange Money que le paiement avec cette référence est bien reçu avant de valider.</span></div>`
+      : `<div class="notice info small"><span>Envoyez d'abord l'argent au numéro indiqué depuis votre compte Wave / Orange Money, puis cliquez sur « Marquer payé ».</span></div>`}
+    <h2>En attente (${pend.length})</h2>
+    ${pend.length ? `<div class="table"><table>${head}<tbody>${pend.map((r) => row(r, true)).join("")}</tbody></table></div>` : `<div class="empty">Rien en attente.</div>`}
+    <h2 style="margin-top:12px">Historique</h2>
+    <div class="table"><table>${head}<tbody>${data.filter((r) => r.status !== "en_attente").map((r) => row(r, false)).join("") || `<tr><td colspan="6" class="muted">Aucun historique.</td></tr>`}</tbody></table></div></div>`;
+  const act = async (b, approve) => { busy(b, true); try { await rpc(fn, { p_id: b.dataset.ok || b.dataset.no, p_approve: approve }); toast(approve ? "Validé" : "Refusé"); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } };
+  body.querySelectorAll("[data-ok]").forEach((b) => b.onclick = () => act(b, true));
+  body.querySelectorAll("[data-no]").forEach((b) => b.onclick = () => act(b, false));
+}
+const adminRecharges = (b, r) => adminRequests(b, r, "recharges", "admin_process_recharge", "Annonceur", "Valider");
+const adminWithdrawals = (b, r) => adminRequests(b, r, "withdrawals", "admin_process_withdrawal", "Diffuseur", "Marquer payé");
+
+async function adminDiffuseurs(body, reload) {
+  const rows = await rpc("admin_diffuseurs");
+  body.innerHTML = `<div class="stack"><p class="small muted">Triés par nombre de clics bloqués. Un diffuseur avec beaucoup de clics bloqués, ou plus de clics que de vues, est suspect.</p>
+    <div class="table"><table><thead><tr><th>Diffuseur</th><th>Ville</th><th class="n">Vues moy.</th><th class="n">Clics valides</th><th class="n">Bloqués</th><th class="n">Aujourd'hui</th><th class="n">Gains</th><th>Chaîne</th><th></th></tr></thead><tbody>
+    ${rows.map((d) => { const tot = Number(d.valid_clicks) + Number(d.invalid_clicks); const susp = (tot > 10 && d.invalid_clicks / tot > 0.4) || (d.avg_views > 0 && d.clicks_today > d.avg_views * 0.5);
+      return `<tr><td>${esc(d.full_name)}<div class="small muted num">${esc(d.phone)}</div>${susp ? `<span class="pill p-bad">Suspect</span>` : ""}${d.is_blocked ? `<span class="pill p-mute">Bloqué</span>` : ""}</td><td>${esc(d.city)}</td><td class="n">${fcfa(d.avg_views)}</td><td class="n">${fcfa(d.valid_clicks)}</td><td class="n">${fcfa(d.invalid_clicks)}</td><td class="n">${fcfa(d.clicks_today)}</td><td class="n">${fcfa(d.earnings)}</td><td>${d.channel_joined ? "Oui" : "Non"}</td>
+      <td><button class="btn ${d.is_blocked ? "btn-ghost" : "btn-bad"} btn-sm" data-u="${d.id}" data-b="${!d.is_blocked}">${d.is_blocked ? "Débloquer" : "Bloquer"}</button></td></tr>`; }).join("") || `<tr><td colspan="9" class="muted">Aucun diffuseur.</td></tr>`}
+    </tbody></table></div></div>`;
+  body.querySelectorAll("[data-u]").forEach((b) => b.onclick = async () => { busy(b, true); try { await rpc("admin_set_blocked", { p_user: b.dataset.u, p_blocked: b.dataset.b === "true" }); toast("Mis à jour"); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } });
+}
+
+async function adminAnnonceurs(body) {
+  const rows = await rpc("admin_annonceurs");
+  body.innerHTML = `<div class="table"><table><thead><tr><th>Annonceur</th><th>Entreprise</th><th>Téléphone</th><th class="n">Rechargé</th><th class="n">Dépensé</th><th class="n">Campagnes</th><th>Inscrit le</th></tr></thead><tbody>
+    ${rows.map((a) => `<tr><td>${esc(a.full_name)}</td><td>${esc(a.company)}</td><td class="num">${esc(a.phone)}</td><td class="n">${fcfa(a.credited)}</td><td class="n">${fcfa(a.spent)}</td><td class="n">${a.campaigns}</td><td>${dateFr(a.created_at)}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Aucun annonceur.</td></tr>`}
+  </tbody></table></div>`;
+}
+
+async function adminClicks(body) {
+  const rows = await rpc("admin_recent_clicks");
+  body.innerHTML = `<div class="stack"><p class="small muted">Les 100 derniers clics. Les clics bloqués ne sont ni facturés ni payés.</p><div class="table"><table><thead><tr><th>Heure</th><th>Campagne</th><th>Diffuseur</th><th>Résultat</th><th class="n">Facturé</th></tr></thead><tbody>
+    ${rows.map((k) => `<tr><td>${dateTimeFr(k.created_at)}</td><td>${esc(k.campaign)}</td><td>${esc(k.diffuseur)}</td><td>${k.is_valid ? `<span class="pill p-ok">Valide</span>` : `<span class="pill p-bad">${esc(REASONS[k.reason] || k.reason)}</span>`}</td><td class="n">${fcfa(k.cost)}</td></tr>`).join("") || `<tr><td colspan="5" class="muted">Aucun clic.</td></tr>`}
+  </tbody></table></div></div>`;
+}
+
+async function adminSettings(body) {
+  const { data: s } = await sb.from("settings").select("*").eq("id", 1).single();
+  const f = (k, l, h, type = "number", step = "1") => `<label for="st-${k}">${l}<span class="hint">${h}</span><input id="st-${k}" type="${type}" step="${step}" value="${esc(s[k])}"></label>`;
+  body.innerHTML = `<form id="st-form" class="card stack" style="max-width:760px">
+    <h3>Paiements et Chaîne WhatsApp</h3>
+    ${f("whatsapp_channel_url", "Lien de la Chaîne WhatsApp", "Ex. : https://whatsapp.com/channel/…", "url")}
+    <div class="grid g2">${f("wave_number", "Numéro Wave pour les recharges", "Affiché aux annonceurs", "text")}${f("om_number", "Numéro Orange Money", "Affiché aux annonceurs", "text")}</div>
+    <h3 style="margin-top:8px">Tarifs</h3>
+    <div class="grid g2">${f("cpc_min", "Prix minimum du clic (FCFA)", "Payé par l'annonceur")}${f("payout_ratio", "Part reversée au diffuseur", "0.5 = 50 % du prix du clic", "number", "0.05")}
+    ${f("min_budget", "Budget minimum d'une campagne (FCFA)", "")}${f("min_withdrawal", "Retrait minimum (FCFA)", "")}</div>
+    <h3 style="margin-top:8px">Anti-fraude</h3>
+    <div class="grid g2">${f("hold_hours", "Délai de vérification des gains (heures)", "Avant que les gains soient retirables")}${f("daily_cap_per_link", "Clics max par jour et par diffuseur", "Sur une même campagne")}
+    ${f("max_clicks_per_ip_day", "Clics max par jour et par connexion (IP)", "Attention : beaucoup de mobiles partagent une même IP")}${f("max_clicks_per_ua_link_day", "Clics max par jour d'un même modèle d'appareil", "Sur le lien d'un même diffuseur")}</div>
+    <button class="btn btn-primary" id="st-btn" style="align-self:flex-start">Enregistrer les réglages</button></form>`;
+  $("#st-form").onsubmit = async (e) => {
+    e.preventDefault(); const btn = $("#st-btn"); busy(btn, true);
+    const p = {}; ["whatsapp_channel_url", "wave_number", "om_number", "cpc_min", "payout_ratio", "min_budget", "min_withdrawal", "hold_hours", "daily_cap_per_link", "max_clicks_per_ip_day", "max_clicks_per_ua_link_day"].forEach((k) => p[k] = $("#st-" + k).value.trim());
+    try { await rpc("admin_update_settings", { p }); state.settings = null; await loadProfile(); toast("Réglages enregistrés"); busy(btn, false); }
+    catch (err) { toast(errMsg(err), true); busy(btn, false); }
+  };
+}
+
+/* ==================== Démarrage ==================== */
+sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_IN" || ev === "SIGNED_OUT") setTimeout(async () => { const before = state.profile?.id; await loadProfile(); if (before !== state.profile?.id) route(); }, 0); });
+window.addEventListener("hashchange", route);
+loadProfile().then(route).catch((e) => { app.innerHTML = `<main class="wrap"><div class="notice warn">Impossible de joindre le serveur. Vérifiez votre connexion internet. (${esc(errMsg(e))})</div></main>`; });
+</script>
+</body>
+</html>
