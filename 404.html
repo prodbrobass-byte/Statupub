@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StatuPub</title>
+<meta property="og:title" content="StatuPub">
+<meta property="og:description" content="Ouvre le lien pour découvrir l'offre.">
+<meta property="og:image" content="https://statupub.com/logo/statupub-logo-fond-sombre.png">
+<meta name="robots" content="noindex">
+<script>
+  // Liens courts : statupub.com/<CODE> -> traqueur de clics (compte le clic puis redirige vers l'annonceur)
+  (function () {
+    var code = location.pathname.replace(/^\/+|\/+$/g, "");
+    if (/^[A-Za-z0-9]{5,12}$/.test(code)) {
+      location.replace("https://zqqtqopcrlxvsxvqmfjo.supabase.co/functions/v1/go/" + code);
+    }
+  })();
+</script>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0E3B36;color:#F3F1EA;font-family:system-ui,sans-serif;text-align:center;padding:24px}a{color:#E8A33D}</style>
+</head><body><div><img src="/logo/statupub-icone-transparent.png" width="88" height="88" alt=""><p>Redirection…</p><p><a href="/">Aller sur StatuPub</a></p></div></body></html>

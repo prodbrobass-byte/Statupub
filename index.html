@@ -8,6 +8,8 @@
 <meta property="og:title" content="StatuPub — Ton statut WhatsApp te rapporte">
 <meta property="og:description" content="Publie des pubs sur ton statut et gagne de l'argent à chaque clic. Annonceurs : payez seulement les vrais clics.">
 <meta name="theme-color" content="#0E3B36">
+<meta property="og:image" content="https://statupub.com/logo/statupub-logo-fond-sombre.png">
+<link rel="icon" href="logo/statupub-icone-1024.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
@@ -211,7 +213,7 @@ main{padding-block:24px 64px}
 /* ==================== Configuration ==================== */
 const SUPABASE_URL = "https://zqqtqopcrlxvsxvqmfjo.supabase.co";
 const SUPABASE_KEY = "sb_publishable_ELwnBEHmoxzb1NemI_nAig_YdEish0f";
-const TRACK_BASE = SUPABASE_URL + "/functions/v1/go/";
+const TRACK_BASE = "https://statupub.com/";  // lien court -> 404.html -> traqueur de clics
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const state = { session: null, profile: null, settings: null };
