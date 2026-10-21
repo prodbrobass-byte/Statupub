@@ -259,7 +259,7 @@ async function payApi(route, body) {
   return d;
 }
 async function payStatus() {
-  if (state.pay) return state.pay;
+  if (state.pay?.configured) return state.pay;
   try { state.pay = await (await fetch(PAY_FN + "/status")).json(); } catch { state.pay = { configured: false }; }
   return state.pay;
 }
