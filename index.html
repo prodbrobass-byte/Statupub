@@ -3,10 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>StatuPub</title>
-<meta name="description" content="StatuPub : la régie publicitaire des statuts WhatsApp au Sénégal. Annonceurs, payez au clic. Diffuseurs, gagnez de l'argent avec votre statut.">
-<meta property="og:title" content="StatuPub — Ton statut WhatsApp te rapporte">
-<meta property="og:description" content="Publie des pubs sur ton statut et gagne de l'argent à chaque clic. Annonceurs : payez seulement les vrais clics.">
+<title>StatuPub : gagne de l'argent avec ton statut WhatsApp | Pub WhatsApp Sénégal</title>
+<meta name="description" content="StatuPub, la régie pub des statuts WhatsApp au Sénégal. Diffuseurs : gagnez de l'argent à chaque clic, payé sur Wave et Orange Money. Annonceurs : payez seulement les vrais clics.">
+<link rel="canonical" href="https://statupub.com/">
+<meta property="og:type" content="website"><meta property="og:site_name" content="StatuPub"><meta property="og:locale" content="fr_SN"><meta property="og:url" content="https://statupub.com/">
+<meta property="og:title" content="StatuPub : ton statut WhatsApp te rapporte à chaque clic">
+<meta property="og:description" content="Publie des pubs sur ton statut et gagne de l'argent à chaque clic. Annonceurs : payez seulement les vrais clics. Wave et Orange Money.">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@graph": [{"@type": "Organization", "@id": "https://statupub.com/#org", "name": "StatuPub", "url": "https://statupub.com/", "logo": "https://statupub.com/logo/statupub-icone-1024.png", "areaServed": "SN", "parentOrganization": {"@type": "Organization", "name": "West Africa SN Production"}}, {"@type": "WebSite", "@id": "https://statupub.com/#site", "name": "StatuPub", "url": "https://statupub.com/", "inLanguage": "fr-SN", "publisher": {"@id": "https://statupub.com/#org"}}]}</script>
 <meta name="theme-color" content="#0E3B36">
 <meta property="og:image" content="https://statupub.com/logo/statupub-logo-fond-sombre.png">
 <link rel="icon" href="logo/statupub-icone-1024.png">
@@ -206,7 +210,12 @@ main{padding-block:24px 64px}
     <nav id="nav"></nav>
   </div>
 </header>
-<div id="app"><div class="spinner" role="status" aria-label="Chargement"></div></div>
+<div id="app"><main class="wrap" style="padding-block:32px">
+  <h1>Ton statut WhatsApp te rapporte à chaque clic</h1>
+  <p>StatuPub est la régie publicitaire des statuts WhatsApp au Sénégal. Les diffuseurs publient des pubs sur leur statut et gagnent de l'argent à chaque clic, payé sur Wave et Orange Money. Les annonceurs touchent leurs clients là où ils regardent vraiment, et paient seulement les vrais clics.</p>
+  <p><a href="/gagner-argent-statut-whatsapp/">Gagner de l'argent avec son statut WhatsApp</a> · <a href="/publicite-whatsapp-senegal/">Faire de la publicité sur WhatsApp</a> · <a href="/faq/">Questions fréquentes</a></p>
+  <noscript><p>Activez JavaScript pour créer votre compte StatuPub.</p></noscript>
+</main></div>
 <div id="modal-root"></div>
 
 <script>
@@ -432,7 +441,7 @@ function viewHome() {
       </ul>
     </div>
   </div></section>
-  <footer><div class="wrap row between"><span>StatuPub · une plateforme West Africa SN Production · Dakar</span><span>Paiements Wave et Orange Money</span></div></footer>`;
+  <footer><div class="wrap row between"><span>StatuPub · une plateforme West Africa SN Production · Dakar</span><span class="row" style="gap:14px"><a href="/gagner-argent-statut-whatsapp/">Gagner avec son statut</a><a href="/publicite-whatsapp-senegal/">Pub WhatsApp Sénégal</a><a href="/faq/">Questions fréquentes</a></span></div></footer>`;
   const v = $("#sim-views"), r = $("#sim-rate");
   const upd = () => { $("#sim-v").textContent = v.value; $("#sim-r").textContent = r.value + " %"; $("#sim-out").textContent = fcfa(v.value * r.value / 100 * pay) + " FCFA"; };
   v.oninput = r.oninput = upd; upd();
