@@ -1031,7 +1031,12 @@ async function adminSettings(body) {
 /* ==================== Démarrage ==================== */
 sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_IN" || ev === "SIGNED_OUT") setTimeout(async () => { const before = state.profile?.id; await loadProfile(); if (before !== state.profile?.id) route(); }, 0); });
 window.addEventListener("hashchange", route);
-loadProfile().then(route).catch((e) => { app.innerHTML = `<main class="wrap"><div class="notice warn">Impossible de joindre le serveur. Vérifiez votre connexion internet. (${esc(errMsg(e))})</div></main>`; });
+loadProfile().then(() => {
+  const lien = new URLSearchParams(location.search).get("lien");
+  if (lien) { history.replaceState(null, "", location.pathname + location.hash);
+    setTimeout(() => toast(lien === "erreur" ? "Ce lien est momentanément indisponible. Réessayez dans un instant." : "Ce lien publicitaire n'existe pas ou a expiré.", true), 400); }
+  return route();
+}).catch((e) => { app.innerHTML = `<main class="wrap"><div class="notice warn">Impossible de joindre le serveur. Vérifiez votre connexion internet. (${esc(errMsg(e))})</div></main>`; });
 </script>
 </body>
 </html>
