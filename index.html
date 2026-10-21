@@ -235,9 +235,36 @@ const fcfa = (n) => new Intl.NumberFormat("fr-FR").format(Math.round(Number(n) |
 const money = (n) => `<span class="num">${fcfa(n)}</span><span class="unit">FCFA</span>`;
 const dateFr = (d) => new Date(d).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 const dateTimeFr = (d) => new Date(d).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-const METHODS = { wave: "Wave", orange_money: "Orange Money", free_money: "Free Money", autre: "Autre" };
+const PAY_FN = SUPABASE_URL + "/functions/v1/paydunya";
+const COUNTRIES = {
+  SN: { name: "Sénégal", modes: ["wave-senegal", "orange-money-senegal", "free-money-senegal", "expresso-senegal"] },
+  CI: { name: "Côte d'Ivoire", modes: ["wave-ci", "orange-money-ci", "mtn-ci", "moov-ci"] },
+  BJ: { name: "Bénin", modes: ["mtn-benin", "moov-benin"] },
+  TG: { name: "Togo", modes: ["t-money-togo", "moov-togo"] },
+  ML: { name: "Mali", modes: ["orange-money-mali"] },
+  BF: { name: "Burkina Faso", modes: ["orange-money-burkina", "moov-burkina-faso"] },
+  CM: { name: "Cameroun", modes: ["mtn-cameroun"] },
+};
+const countryOptions = (sel) => Object.entries(COUNTRIES).map(([k, c]) => `<option value="${k}" ${k === sel ? "selected" : ""}>${c.name}</option>`).join("");
+const METHODS = { wave: "Wave", orange_money: "Orange Money", free_money: "Free Money", autre: "Autre", paydunya: "PayDunya",
+  "wave-senegal": "Wave", "orange-money-senegal": "Orange Money", "free-money-senegal": "Free Money", "expresso-senegal": "Expresso",
+  "wave-ci": "Wave", "orange-money-ci": "Orange Money", "mtn-ci": "MTN MoMo", "moov-ci": "Moov Money",
+  "mtn-benin": "MTN MoMo", "moov-benin": "Moov Money", "t-money-togo": "T-Money", "moov-togo": "Moov Money",
+  "orange-money-mali": "Orange Money", "orange-money-burkina": "Orange Money", "moov-burkina-faso": "Moov Money", "mtn-cameroun": "MTN MoMo" };
+async function payApi(route, body) {
+  const { data: { session } } = await sb.auth.getSession();
+  const r = await fetch(PAY_FN + "/" + route, { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + (session?.access_token || "") }, body: JSON.stringify(body || {}) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || "Erreur de paiement");
+  return d;
+}
+async function payStatus() {
+  if (state.pay) return state.pay;
+  try { state.pay = await (await fetch(PAY_FN + "/status")).json(); } catch { state.pay = { configured: false }; }
+  return state.pay;
+}
 const STATUS = {
-  en_attente: ["En validation", "p-warn"], active: ["Active", "p-ok"], pause: ["En pause", "p-info"],
+  en_attente: ["En validation", "p-warn"], en_cours: ["Paiement en cours", "p-info"], active: ["Active", "p-ok"], pause: ["En pause", "p-info"],
   terminee: ["Terminée", "p-mute"], rejetee: ["Refusée", "p-bad"], validee: ["Validé", "p-ok"],
 };
 const pill = (s) => { const [t, c] = STATUS[s] || [s, "p-mute"]; return `<span class="pill ${c}">${t}</span>`; };
@@ -355,7 +382,13 @@ async function route() {
   try {
     if (path === "/connexion") return viewAuth("login");
     if (path === "/inscription") return viewAuth("signup", new URLSearchParams(q).get("role"));
-    if (path === "/annonceur") return guard("annonceur") && viewAnnonceur();
+    if (path === "/annonceur") {
+      if (!guard("annonceur")) return;
+      const pay = new URLSearchParams(q).get("paiement");
+      if (pay) { history.replaceState(null, "", location.pathname + "#/annonceur");
+        toast(pay === "ok" ? "Paiement reçu : votre solde est crédité" : pay === "annule" ? "Paiement annulé" : "Paiement en cours de confirmation, actualisez dans un instant", pay === "annule"); }
+      return viewAnnonceur();
+    }
     if (path.startsWith("/campagne/")) return guard("annonceur") && viewCampaign(path.split("/")[2]);
     if (path === "/diffuseur") return guard("diffuseur") && viewDiffuseur();
     if (path === "/admin") return guard("admin") && viewAdmin(new URLSearchParams(q).get("t") || "campagnes");
@@ -469,7 +502,10 @@ function viewAuth(mode, roleParam) {
           <label for="f-name">Nom complet<input id="f-name" autocomplete="name" placeholder="Awa Diop"></label>
           <div class="grid g2">
             <label for="f-phone">Téléphone<input id="f-phone" type="tel" autocomplete="tel" placeholder="77 123 45 67"></label>
-            <label for="f-city">Ville<input id="f-city" placeholder="Dakar"></label>
+            <label for="f-city">Ville<input id="f-city" placeholder="Votre ville"></label>
+          </div>
+          <div class="grid g2">
+            <label for="f-country">Pays<select id="f-country">${countryOptions("SN")}</select></label>
           </div>
           <label for="f-company" id="company-wrap" ${role === "annonceur" ? "" : "hidden"}>Entreprise ou boutique<input id="f-company" placeholder="Boutique Awa Mode"></label>
         </div>
@@ -498,7 +534,7 @@ function viewAuth(mode, roleParam) {
         const { error } = await sb.auth.signInWithPassword({ email, password });
         if (error) throw error;
       } else {
-        const meta = { role: app.querySelector("input[name=role]:checked").value, full_name: $("#f-name").value.trim(), phone: $("#f-phone").value.trim(), city: $("#f-city").value.trim(), company: $("#f-company").value.trim() };
+        const meta = { role: app.querySelector("input[name=role]:checked").value, full_name: $("#f-name").value.trim(), phone: $("#f-phone").value.trim(), city: $("#f-city").value.trim(), country: $("#f-country").value, company: $("#f-company").value.trim() };
         if (!meta.full_name || !meta.phone) { busy(btn, false); return toast("Nom et téléphone obligatoires", true); }
         const { data, error } = await sb.auth.signUp({ email, password, options: { data: meta, emailRedirectTo: location.origin + location.pathname } });
         if (error) throw error;
@@ -523,7 +559,7 @@ async function viewAnnonceur() {
   const active = camps.filter((c) => c.status === "active");
   const totalClicks = camps.reduce((a, c) => a + Number(c.valid_clicks), 0);
   const today = camps.reduce((a, c) => a + Number(c.clicks_today), 0);
-  const pend = rech.filter((r) => r.status === "en_attente");
+  const pend = rech.filter((r) => r.status === "en_attente" && r.method !== "paydunya");
   app.innerHTML = `<main class="wrap">
     <div class="page-head"><div><p class="eyebrow">Espace annonceur</p><h1 style="font-size:2rem">Bonjour ${esc((state.profile.full_name || "").split(" ")[0])}</h1></div>
       <div class="row"><button class="btn btn-ghost" id="b-recharge">Recharger mon compte</button><button class="btn btn-primary" id="b-new">Nouvelle campagne</button></div></div>
@@ -540,7 +576,7 @@ async function viewAnnonceur() {
         `<div class="empty stack" style="align-items:center"><b style="color:var(--text)">Aucune campagne pour l'instant</b><span>Rechargez votre compte, puis créez votre première campagne : votre pub sera diffusée sur les statuts de nos diffuseurs.</span><button class="btn btn-primary" id="b-new2">Créer ma première campagne</button></div>`}
       <h2 style="margin-top:16px">Historique des recharges</h2>
       ${rech.length ? `<div class="table"><table><thead><tr><th>Date</th><th>Moyen</th><th>Référence</th><th class="n">Montant</th><th>Statut</th></tr></thead><tbody>
-        ${rech.map((r) => `<tr><td>${dateTimeFr(r.created_at)}</td><td>${METHODS[r.method]}</td><td>${esc(r.reference)}</td><td class="n">${fcfa(r.amount)}</td><td>${pill(r.status)}${r.admin_note ? `<div class="small muted">${esc(r.admin_note)}</div>` : ""}</td></tr>`).join("")}
+        ${rech.filter((r) => !(r.method === "paydunya" && r.status === "en_attente")).map((r) => `<tr><td>${dateTimeFr(r.created_at)}</td><td>${METHODS[r.method]}</td><td>${esc(r.reference)}</td><td class="n">${fcfa(r.amount)}</td><td>${pill(r.status)}${r.admin_note ? `<div class="small muted">${esc(r.admin_note)}</div>` : ""}</td></tr>`).join("")}
       </tbody></table></div>` : `<p class="muted small">Aucune recharge. Le paiement se fait par Wave ou Orange Money.</p>`}
     </div></main>`;
   $("#b-recharge").onclick = rechargeModal;
@@ -567,31 +603,43 @@ function campCard(c) {
 
 function rechargeModal() {
   const s = state.settings || {};
+  payStatus().then((pay) => {
+  const manual = s.wave_number || s.om_number;
   openModal(`
     <div class="row between"><h2>Recharger mon compte</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
-    <ol class="steps small">
-      <li><div><b>Envoyez le paiement</b>
-        <p class="muted">${s.wave_number ? `Wave : <b class="num">${esc(s.wave_number)}</b>` : ""}${s.wave_number && s.om_number ? " · " : ""}${s.om_number ? `Orange Money : <b class="num">${esc(s.om_number)}</b>` : ""}${!s.wave_number && !s.om_number ? "Les numéros de paiement seront affichés ici. Contactez StatuPub en attendant." : ""}</p></div></li>
-      <li><div><b>Déclarez-le ici</b><p class="muted">Indiquez le montant et la référence de la transaction (reçue par SMS).</p></div></li>
-      <li><div><b>Nous validons</b><p class="muted">Votre solde est crédité après vérification.</p></div></li>
-    </ol>
-    <form id="rc-form" class="stack">
-      <div class="grid g2">
-        <label for="rc-amount">Montant (FCFA)<input id="rc-amount" type="number" min="1000" step="500" value="10000" inputmode="numeric"></label>
-        <label for="rc-method">Moyen de paiement<select id="rc-method"><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="free_money">Free Money</option></select></label>
-      </div>
-      <label for="rc-ref">Référence de la transaction<input id="rc-ref" placeholder="Ex. : TXN-8F2K91 ou ID du SMS" maxlength="80"></label>
-      <button class="btn btn-primary" id="rc-btn">Déclarer mon paiement</button>
-    </form>`, (m) => {
-    $("#rc-form", m).onsubmit = async (e) => {
-      e.preventDefault(); const btn = $("#rc-btn", m);
-      const amount = parseInt($("#rc-amount", m).value, 10), ref = $("#rc-ref", m).value.trim();
+    <label for="rc-amount">Montant (FCFA)<input id="rc-amount" type="number" min="1000" step="500" value="10000" inputmode="numeric"></label>
+    <div class="row" id="rc-quick">${[5000, 10000, 25000, 50000].map((v) => `<button type="button" class="btn btn-ghost btn-sm" data-v="${v}">${fcfa(v)}</button>`).join("")}</div>
+    ${pay.configured ? `
+      <button class="btn btn-primary" id="rc-pd">Payer maintenant</button>
+      <p class="small muted">Paiement sécurisé par PayDunya : Wave, Orange Money, Free Money, MTN, Moov ou carte bancaire. Votre solde est crédité automatiquement.${pay.mode === "test" ? " <b>Mode test : aucun vrai argent n'est débité.</b>" : ""}</p>` : ""}
+    ${manual ? `<details ${pay.configured ? "" : "open"}><summary class="small"><b>${pay.configured ? "Ou payer à la main (transfert)" : "Payer par transfert"}</b></summary>
+      <div class="stack" style="margin-top:12px">
+        <p class="small muted">1. Envoyez le montant ${s.wave_number ? `sur Wave au <b class="num">${esc(s.wave_number)}</b>` : ""}${s.wave_number && s.om_number ? " ou " : ""}${s.om_number ? `sur Orange Money au <b class="num">${esc(s.om_number)}</b>` : ""}. 2. Déclarez la référence ci-dessous. 3. Nous validons après vérification.</p>
+        <div class="grid g2">
+          <label for="rc-method">Moyen<select id="rc-method"><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="free_money">Free Money</option></select></label>
+          <label for="rc-ref">Référence de la transaction<input id="rc-ref" placeholder="Ex. : TXN-8F2K91" maxlength="80"></label>
+        </div>
+        <button class="btn btn-ghost" id="rc-btn">Déclarer mon transfert</button>
+      </div></details>` : ""}
+    ${!pay.configured && !manual ? `<div class="notice warn small"><span>Le paiement en ligne arrive très bientôt. Contactez StatuPub pour recharger votre compte.</span></div>` : ""}`, (m) => {
+    m.querySelectorAll("[data-v]").forEach((b) => b.onclick = () => $("#rc-amount", m).value = b.dataset.v);
+    const amt = () => parseInt($("#rc-amount", m).value, 10);
+    $("#rc-pd", m)?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget, amount = amt();
+      if (!(amount >= 1000)) return toast("Montant minimum : 1 000 FCFA", true);
+      busy(btn, true);
+      try { const d = await payApi("checkout", { amount }); location.href = d.url; }
+      catch (err) { toast(errMsg(err), true); busy(btn, false); }
+    });
+    $("#rc-btn", m)?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget, amount = amt(), ref = $("#rc-ref", m).value.trim();
       if (!(amount >= 1000)) return toast("Montant minimum : 1 000 FCFA", true);
       if (ref.length < 3) return toast("Indiquez la référence de la transaction", true);
       busy(btn, true);
-      try { await rpc("request_recharge", { p_amount: amount, p_method: $("#rc-method", m).value, p_reference: ref }); closeModal(); toast("Paiement déclaré. Nous le vérifions."); viewAnnonceur(); }
+      try { await rpc("request_recharge", { p_amount: amount, p_method: $("#rc-method", m).value, p_reference: ref }); closeModal(); toast("Transfert déclaré. Nous le vérifions."); viewAnnonceur(); }
       catch (err) { toast(errMsg(err), true); busy(btn, false); }
-    };
+    });
+  });
   });
 }
 
@@ -797,7 +845,7 @@ function withdrawModal(available) {
     <form id="wd-form" class="stack">
       <label for="wd-amount">Montant (FCFA)<input id="wd-amount" type="number" min="${s.min_withdrawal || 1000}" max="${available}" value="${available}" inputmode="numeric"></label>
       <div class="grid g2">
-        <label for="wd-method">Recevoir sur<select id="wd-method"><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="free_money">Free Money</option></select></label>
+        <label for="wd-method">Recevoir sur<select id="wd-method">${(COUNTRIES[p.country] || COUNTRIES.SN).modes.map((k) => `<option value="${k}">${METHODS[k]} (${(COUNTRIES[p.country] || COUNTRIES.SN).name})</option>`).join("")}</select></label>
         <label for="wd-phone">Numéro<input id="wd-phone" type="tel" value="${esc(p.phone)}" placeholder="77 123 45 67"></label>
       </div>
       <button class="btn btn-primary" id="wd-btn">Demander le retrait</button>
@@ -821,12 +869,13 @@ function profileModal() {
       <label for="pf-name">Nom complet<input id="pf-name" value="${esc(p.full_name)}"></label>
       <div class="grid g2"><label for="pf-phone">Téléphone<input id="pf-phone" type="tel" value="${esc(p.phone)}"></label>
       <label for="pf-city">Ville<input id="pf-city" value="${esc(p.city)}"></label></div>
+      <label for="pf-country">Pays<span class="hint">Détermine les moyens de retrait proposés</span><select id="pf-country">${countryOptions(p.country)}</select></label>
       <label for="pf-views">Vues moyennes par statut<input id="pf-views" type="number" min="0" value="${p.avg_views}"></label>
       <button class="btn btn-primary" id="pf-btn">Enregistrer</button>
     </form>`, (m) => {
     $("#pf-form", m).onsubmit = async (e) => {
       e.preventDefault(); const btn = $("#pf-btn", m); busy(btn, true);
-      const { error } = await sb.from("profiles").update({ full_name: $("#pf-name", m).value.trim(), phone: $("#pf-phone", m).value.trim(), city: $("#pf-city", m).value.trim(), avg_views: parseInt($("#pf-views", m).value, 10) || 0 }).eq("id", p.id);
+      const { error } = await sb.from("profiles").update({ full_name: $("#pf-name", m).value.trim(), phone: $("#pf-phone", m).value.trim(), city: $("#pf-city", m).value.trim(), country: $("#pf-country", m).value, avg_views: parseInt($("#pf-views", m).value, 10) || 0 }).eq("id", p.id);
       if (error) { toast(errMsg(error), true); busy(btn, false); return; }
       await loadProfile(); closeModal(); toast("Profil enregistré"); viewDiffuseur();
     };
@@ -887,7 +936,8 @@ async function adminCampaigns(body, reload) {
 async function adminRequests(body, reload, table, fn, who, labelOk) {
   const { data, error } = await sb.from(table).select(`*, profiles(full_name, company, phone)`).order("created_at", { ascending: false }).limit(150);
   if (error) throw error;
-  const pend = data.filter((r) => r.status === "en_attente");
+  const isPend = (r) => r.status === "en_attente" && r.method !== "paydunya";
+  const pend = data.filter(isPend);
   const row = (r, actions) => `<tr><td>${dateTimeFr(r.created_at)}</td><td>${esc(r.profiles?.company || r.profiles?.full_name)}<div class="small muted">${esc(r.profiles?.phone)}</div></td><td>${METHODS[r.method]}</td><td class="num">${esc(table === "recharges" ? r.reference : r.phone)}</td><td class="n">${fcfa(r.amount)}</td><td>${actions ? `<div class="row" style="flex-wrap:nowrap"><button class="btn btn-ok btn-sm" data-ok="${r.id}">${labelOk}</button><button class="btn btn-bad btn-sm" data-no="${r.id}">Refuser</button></div>` : pill(r.status)}</td></tr>`;
   const head = `<thead><tr><th>Date</th><th>${who}</th><th>Moyen</th><th>${table === "recharges" ? "Référence" : "Numéro"}</th><th class="n">Montant</th><th></th></tr></thead>`;
   body.innerHTML = `<div class="stack">
@@ -896,13 +946,40 @@ async function adminRequests(body, reload, table, fn, who, labelOk) {
     <h2>En attente (${pend.length})</h2>
     ${pend.length ? `<div class="table"><table>${head}<tbody>${pend.map((r) => row(r, true)).join("")}</tbody></table></div>` : `<div class="empty">Rien en attente.</div>`}
     <h2 style="margin-top:12px">Historique</h2>
-    <div class="table"><table>${head}<tbody>${data.filter((r) => r.status !== "en_attente").map((r) => row(r, false)).join("") || `<tr><td colspan="6" class="muted">Aucun historique.</td></tr>`}</tbody></table></div></div>`;
+    <div class="table"><table>${head}<tbody>${data.filter((r) => !isPend(r) && !(r.method === "paydunya" && r.status === "en_attente")).map((r) => row(r, false)).join("") || `<tr><td colspan="6" class="muted">Aucun historique.</td></tr>`}</tbody></table></div></div>`;
   const act = async (b, approve) => { busy(b, true); try { await rpc(fn, { p_id: b.dataset.ok || b.dataset.no, p_approve: approve }); toast(approve ? "Validé" : "Refusé"); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } };
   body.querySelectorAll("[data-ok]").forEach((b) => b.onclick = () => act(b, true));
   body.querySelectorAll("[data-no]").forEach((b) => b.onclick = () => act(b, false));
 }
 const adminRecharges = (b, r) => adminRequests(b, r, "recharges", "admin_process_recharge", "Annonceur", "Valider");
-const adminWithdrawals = (b, r) => adminRequests(b, r, "withdrawals", "admin_process_withdrawal", "Diffuseur", "Marquer payé");
+async function adminWithdrawals(body, reload) {
+  const pay = await payStatus();
+  const { data, error } = await sb.from("withdrawals").select("*, profiles(full_name, phone, country)").order("created_at", { ascending: false }).limit(150);
+  if (error) throw error;
+  const pend = data.filter((r) => r.status === "en_attente"), running = data.filter((r) => r.status === "en_cours");
+  const who = (r) => `${esc(r.profiles?.full_name)}<div class="small muted">${esc((COUNTRIES[r.profiles?.country] || {}).name || "")}</div>`;
+  const row = (r, act) => `<tr><td>${dateTimeFr(r.created_at)}</td><td>${who(r)}</td><td>${METHODS[r.method] || esc(r.method)}</td><td class="num">${esc(r.phone)}</td><td class="n">${fcfa(r.amount)}</td><td>${act
+    ? `<div class="row" style="flex-wrap:nowrap">${pay.configured ? `<button class="btn btn-primary btn-sm" data-pd="${r.id}">Payer via PayDunya</button>` : ""}<button class="btn btn-ghost btn-sm" data-ok="${r.id}">Payé à la main</button><button class="btn btn-bad btn-sm" data-no="${r.id}">Refuser</button></div>${r.admin_note ? `<div class="small muted">${esc(r.admin_note)}</div>` : ""}`
+    : `${pill(r.status)}${r.admin_note ? `<div class="small muted">${esc(r.admin_note)}</div>` : ""}`}</td></tr>`;
+  const head = `<thead><tr><th>Date</th><th>Diffuseur</th><th>Moyen</th><th>Numéro</th><th class="n">Montant</th><th></th></tr></thead>`;
+  body.innerHTML = `<div class="stack">
+    <div class="notice info small"><span>${pay.configured ? `« Payer via PayDunya » envoie l'argent automatiquement depuis votre solde PayDunya${pay.mode === "test" ? " (mode test)" : ""}. Vérifiez que ce solde est suffisant.` : "PayDunya n'est pas encore branché : envoyez l'argent depuis votre téléphone, puis cliquez sur « Payé à la main »."}</span></div>
+    <h2>À payer (${pend.length})</h2>
+    ${pend.length ? `<div class="table"><table>${head}<tbody>${pend.map((r) => row(r, true)).join("")}</tbody></table></div>` : `<div class="empty">Rien à payer.</div>`}
+    ${running.length ? `<div class="row between" style="margin-top:12px"><h2>Paiements en cours (${running.length})</h2><button class="btn btn-ghost btn-sm" id="pd-sync">Revérifier</button></div>
+      <div class="table"><table>${head}<tbody>${running.map((r) => row(r, false)).join("")}</tbody></table></div>` : ""}
+    <h2 style="margin-top:12px">Historique</h2>
+    <div class="table"><table>${head}<tbody>${data.filter((r) => !["en_attente", "en_cours"].includes(r.status)).map((r) => row(r, false)).join("") || `<tr><td colspan="6" class="muted">Aucun historique.</td></tr>`}</tbody></table></div></div>`;
+  const act = async (b, approve) => { busy(b, true); try { await rpc("admin_process_withdrawal", { p_id: b.dataset.ok || b.dataset.no, p_approve: approve }); toast(approve ? "Marqué payé" : "Refusé"); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } };
+  body.querySelectorAll("[data-ok]").forEach((b) => b.onclick = () => act(b, true));
+  body.querySelectorAll("[data-no]").forEach((b) => b.onclick = () => act(b, false));
+  body.querySelectorAll("[data-pd]").forEach((b) => b.onclick = async () => {
+    busy(b, true);
+    try { const d = await payApi("payout", { withdrawal_id: b.dataset.pd }); toast(d.status === "success" ? "Paiement envoyé" : "Paiement en cours chez l'opérateur"); reload(); }
+    catch (e) { toast(errMsg(e), true); reload(); }
+  });
+  $("#pd-sync")?.addEventListener("click", async (e) => { busy(e.currentTarget, true); try { await payApi("sync"); toast("Statuts mis à jour"); } catch (err) { toast(errMsg(err), true); } reload(); });
+}
 
 async function adminDiffuseurs(body, reload) {
   const rows = await rpc("admin_diffuseurs");
