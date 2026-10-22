@@ -790,7 +790,7 @@ function newCampaignModal(available) {
     ${available < minB ? `<div class="notice warn small"><span>Votre solde (${fcfa(available)} FCFA) est inférieur au budget minimum de ${fcfa(minB)} FCFA. <button type="button" class="btn btn-ink btn-sm" id="go-rc" style="margin-top:8px">Recharger d'abord</button></span></div>` : ""}
     <form id="nc-form" class="stack">
       <label for="nc-title">Nom de la campagne<span class="hint">Pour vous repérer. Les diffuseurs le voient aussi.</span><input id="nc-title" maxlength="80" placeholder="Promo Tabaski -20 %"></label>
-      <label for="nc-msg">Texte de la pub<span class="hint">Le texte que les diffuseurs copieront sous le visuel. Le lien est ajouté automatiquement.</span><textarea id="nc-msg" maxlength="700" placeholder="🐑 Tabaski approche ! -20 % sur tous les boubous chez Awa Mode, livraison gratuite à Dakar."></textarea></label>
+      <label for="nc-msg">Texte de la pub<span class="hint">Le texte que les diffuseurs copieront sous le visuel. Le lien est ajouté automatiquement.</span><textarea id="nc-msg" maxlength="1000" placeholder="🐑 Tabaski approche ! -20 % sur tous les boubous chez Awa Mode, livraison gratuite à Dakar."></textarea><span class="hint" id="nc-count" style="text-align:right">0 / 1000</span></label>
       <label for="nc-file">Visuel (image ou vidéo courte)<span class="hint">Format vertical conseillé (1080 × 1920). JPG, PNG, WEBP ou MP4, 16 Mo maximum.</span><input id="nc-file" type="file" accept="image/jpeg,image/png,image/webp,video/mp4"></label>
       <label for="nc-url">Lien de destination<span class="hint">Votre site, votre page ou un lien wa.me vers votre WhatsApp.</span><input id="nc-url" type="url" placeholder="https://wa.me/221771234567"></label>
       <div class="grid g2">
@@ -805,6 +805,8 @@ function newCampaignModal(available) {
     const est = () => { const c = +$("#nc-cpc", m).value || 0, b = +$("#nc-budget", m).value || 0;
       $("#nc-est", m).innerHTML = c > 0 ? `<span>Environ <b class="num">${fcfa(Math.floor(b / c))}</b> clics garantis. Le diffuseur touche <b class="num">${fcfa(Math.floor(c * (s.payout_ratio || 0.5)))}</b> FCFA par clic.</span>` : ""; };
     $("#nc-cpc", m).oninput = $("#nc-budget", m).oninput = est; est();
+    const cnt = () => { const n = $("#nc-msg", m).value.length; $("#nc-count", m).textContent = `${n} / 1000` + (n > 300 ? " · un texte court se lit mieux sur un statut" : ""); };
+    $("#nc-msg", m).oninput = cnt; cnt();
     $("#nc-form", m).onsubmit = async (e) => {
       e.preventDefault(); const btn = $("#nc-btn", m);
       const title = $("#nc-title", m).value.trim(), msg = $("#nc-msg", m).value.trim(), url = $("#nc-url", m).value.trim();
