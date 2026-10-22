@@ -13,7 +13,13 @@
 <script type="application/ld+json">{"@graph": [{"@type": "Organization", "@id": "https://statupub.com/#org", "name": "StatuPub", "url": "https://statupub.com/", "logo": "https://statupub.com/logo/statupub-icone-1024.png", "parentOrganization": {"@type": "Organization", "name": "West Africa SN Production"}}, {"@type": "WebSite", "@id": "https://statupub.com/#site", "name": "StatuPub", "url": "https://statupub.com/", "inLanguage": "fr", "publisher": {"@id": "https://statupub.com/#org"}}]}</script>
 <meta name="theme-color" content="#0E3B36">
 <meta property="og:image" content="https://statupub.com/logo/statupub-logo-fond-sombre.png">
-<link rel="icon" href="logo/statupub-icone-1024.png">
+<link rel="icon" href="/icons/favicon-32.png" sizes="32x32">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="StatuPub">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
@@ -394,6 +400,7 @@ function barChart(rows, key = "valid_clicks", label = "clics") {
 /* ==================== Navigation ==================== */
 function renderNav() {
   setupChat();
+  setTimeout(renderInstallBtn, 0);
   const nav = $("#nav");
   if (!state.profile) {
     nav.innerHTML = `<a class="btn btn-ghost btn-sm" href="#/connexion">Connexion</a><a class="btn btn-primary btn-sm" href="#/inscription">Créer un compte</a>`;
@@ -1310,6 +1317,34 @@ async function adminMessages(body, reload, sel) {
     busy(btn, false); input.focus();
   };
 }
+
+/* ==================== Application installable (PWA) ==================== */
+const pwa = { prompt: null };
+const isStandalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); pwa.prompt = e; renderInstallBtn(); });
+window.addEventListener("appinstalled", () => { pwa.prompt = null; renderInstallBtn(); toast("StatuPub est installé sur ton appareil 🎉"); });
+function renderInstallBtn() {
+  $("#install-btn")?.remove();
+  if (isStandalone() || (!pwa.prompt && !isIOS())) return;
+  const nav = $("#nav"); if (!nav) return;
+  nav.insertAdjacentHTML("afterbegin", `<button class="btn btn-ghost btn-sm" id="install-btn" aria-label="Installer l'application StatuPub">📲 Installer</button>`);
+  $("#install-btn").onclick = installApp;
+}
+async function installApp() {
+  if (pwa.prompt) { pwa.prompt.prompt(); const r = await pwa.prompt.userChoice; if (r.outcome === "accepted") pwa.prompt = null; renderInstallBtn(); return; }
+  if (isIOS()) {
+    const safari = /safari/i.test(navigator.userAgent) && !/crios|fxios|edgios/i.test(navigator.userAgent);
+    openModal(`<div class="row between"><h2>Installer StatuPub</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
+      ${safari ? "" : `<div class="notice warn small"><span>Sur iPhone, l'installation se fait depuis <b>Safari</b>. Ouvre statupub.com dans Safari, puis suis ces étapes.</span></div>`}
+      <ol class="steps small">
+        <li><div><b>Appuie sur le bouton Partager</b><p class="muted">Le carré avec une flèche vers le haut, en bas de l'écran (ou en haut sur iPad).</p></div></li>
+        <li><div><b>Choisis « Sur l'écran d'accueil »</b><p class="muted">Fais défiler la liste si tu ne le vois pas tout de suite.</p></div></li>
+        <li><div><b>Appuie sur « Ajouter »</b><p class="muted">L'icône StatuPub apparaît sur ton écran d'accueil, comme une vraie application.</p></div></li>
+      </ol>`);
+  }
+}
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
 
 /* ==================== Démarrage ==================== */
 sb.auth.onAuthStateChange((ev) => { if (ev === "PASSWORD_RECOVERY") setTimeout(newPasswordModal, 300); if (ev === "SIGNED_IN" || ev === "SIGNED_OUT") setTimeout(async () => { const before = state.profile?.id; await loadProfile(); if (before !== state.profile?.id) route(); }, 0); });
