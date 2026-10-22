@@ -236,6 +236,8 @@ const money = (n) => `<span class="num">${fcfa(n)}</span><span class="unit">FCFA
 const dateFr = (d) => new Date(d).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 const dateTimeFr = (d) => new Date(d).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const PAY_FN = SUPABASE_URL + "/functions/v1/paydunya";
+function getRef() { if (state.ref) return state.ref; try { return localStorage.getItem("sp_ref") || ""; } catch { return ""; } }
+const LEVELS = { ambassadeur: ["Ambassadeur", "p-info"], or: ["Ambassadeur Or", "p-warn"], elite: ["Ambassadeur Elite", "p-ok"] };
 const COUNTRIES = {
   SN: { name: "Sénégal", modes: ["wave-senegal", "orange-money-senegal", "free-money-senegal", "expresso-senegal"] },
   CI: { name: "Côte d'Ivoire", modes: ["wave-ci", "orange-money-ci", "mtn-ci", "moov-ci"] },
@@ -534,7 +536,7 @@ function viewAuth(mode, roleParam) {
         const { error } = await sb.auth.signInWithPassword({ email, password });
         if (error) throw error;
       } else {
-        const meta = { role: app.querySelector("input[name=role]:checked").value, full_name: $("#f-name").value.trim(), phone: $("#f-phone").value.trim(), city: $("#f-city").value.trim(), country: $("#f-country").value, company: $("#f-company").value.trim() };
+        const meta = { role: app.querySelector("input[name=role]:checked").value, full_name: $("#f-name").value.trim(), phone: $("#f-phone").value.trim(), city: $("#f-city").value.trim(), country: $("#f-country").value, company: $("#f-company").value.trim(), ref: getRef() };
         if (!meta.full_name || !meta.phone) { busy(btn, false); return toast("Nom et téléphone obligatoires", true); }
         const { data, error } = await sb.auth.signUp({ email, password, options: { data: meta, emailRedirectTo: location.origin + location.pathname } });
         if (error) throw error;
@@ -754,6 +756,7 @@ async function viewDiffuseur() {
       <div class="card kpi"><span class="eyebrow">Clics (30 jours)</span><span class="num">${fcfa(totalClicks)}</span><span class="small muted">clics valides sur tes liens</span></div>
     </div>
     <div class="stack">
+      ${p.is_ambassador ? `<div id="amb-box"><div class="spinner"></div></div>` : ""}
       <div class="row between"><h2>Campagnes à publier</h2>${s.whatsapp_channel_url ? `<a class="btn btn-ghost btn-sm" href="${esc(s.whatsapp_channel_url)}" target="_blank" rel="noopener">Ouvrir la Chaîne StatuPub</a>` : ""}</div>
       ${camps.length ? `<div class="grid g3">${camps.map((c) => adCard(c, ready)).join("")}</div>` :
         `<div class="empty">Aucune campagne disponible pour le moment. Les nouvelles campagnes sont annoncées sur la Chaîne WhatsApp StatuPub : reviens vite !</div>`}
@@ -775,6 +778,7 @@ async function viewDiffuseur() {
       </tbody></table></div>` : `<p class="muted small">Aucun retrait pour l'instant.</p>`}
     </div></main>`;
   bindOnboarding();
+  if (p.is_ambassador) renderAmbassador($("#amb-box"));
   $("#b-wd").onclick = () => withdrawModal(w.available);
   $("#b-profile").onclick = profileModal;
   app.querySelectorAll("[data-link]").forEach((b) => b.onclick = async () => {
@@ -783,6 +787,44 @@ async function viewDiffuseur() {
     catch (err) { toast(errMsg(err), true); busy(b, false); }
   });
   app.querySelectorAll("[data-copy]").forEach((b) => b.onclick = () => copy(b.dataset.copy, b));
+}
+
+async function renderAmbassador(box) {
+  let d;
+  try { d = await rpc("amb_dashboard"); } catch (e) { box.innerHTML = `<div class="notice warn small">${esc(errMsg(e))}</div>`; return; }
+  if (!d) { box.innerHTML = ""; return; }
+  const linkD = `https://statupub.com/?ref=${d.code}`, linkA = `https://statupub.com/?ref=${d.code}&r=a`;
+  const [lvName, lvCls] = LEVELS[d.level] || LEVELS.ambassadeur;
+  const pct = (x) => Math.round(Number(x) * 100);
+  const gains = Number(d.commission_available) + Number(d.commission_pending) + Number(d.bonus);
+  const next = d.next ? Math.max(Math.min(d.annonceurs_actifs / d.next.annonceurs, 1), Math.min(d.diffuseurs_actifs / d.next.diffuseurs, 1)) : 1;
+  const msgD = `Salut 👋 Ton statut WhatsApp peut te rapporter de l'argent ! Avec StatuPub, tu publies des pubs sur ton statut et tu es payé à chaque clic (Wave, Orange Money, MTN, Moov). Inscription gratuite 👉 ${linkD}`;
+  const msgA = `Bonjour 👋 Faites la pub de votre business sur des centaines de statuts WhatsApp avec StatuPub. Vous payez seulement les vrais clics, dès 25 F. Créez votre campagne 👉 ${linkA}`;
+  box.innerHTML = `<section class="card stack" style="border-color:var(--saffron)">
+    <div class="row between"><div><p class="eyebrow">Programme ambassadeur</p><h2 style="margin-top:4px">Mes parrainages</h2></div><span class="pill ${lvCls}">${lvName} · ${pct(d.rate)} %</span></div>
+    <div class="grid g4" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+      <div class="kpi"><span class="eyebrow">Gains ambassadeur</span><div>${money(gains)}</div><span class="small muted">inclus dans ton solde retirable</span></div>
+      <div class="kpi"><span class="eyebrow">Commissions</span><div>${money(Number(d.commission_available) + Number(d.commission_pending))}</div><span class="small muted">${pct(d.rate)} % des dépenses de tes annonceurs, ${d.months} mois</span></div>
+      <div class="kpi"><span class="eyebrow">Annonceurs</span><span class="num">${d.annonceurs_actifs}</span><span class="small muted">actifs sur ${d.annonceurs_inscrits} inscrits</span></div>
+      <div class="kpi"><span class="eyebrow">Diffuseurs</span><span class="num">${d.diffuseurs_actifs}</span><span class="small muted">actifs sur ${d.diffuseurs_inscrits} inscrits · ${fcfa(d.bonus_unit)} F chacun</span></div>
+    </div>
+    ${d.next ? `<div class="stack" style="gap:6px"><span class="small">Prochain niveau : <b>Ambassadeur ${d.next.name}</b> (${pct(d.next.rate)} %) avec ${d.next.annonceurs} annonceurs actifs <b>ou</b> ${d.next.diffuseurs} diffuseurs actifs</span><div class="bar"><i style="width:${(next * 100).toFixed(0)}%"></i></div></div>` : `<p class="small"><b>Tu es au niveau maximum.</b> Merci pour ton travail 🙏</p>`}
+    <div class="grid g2">
+      <div class="stack" style="gap:8px"><b>Recruter des diffuseurs</b><div class="linkbox"><span>${esc(linkD)}</span></div>
+        <div class="row"><button class="btn btn-ghost btn-sm" data-copy="${esc(linkD)}">Copier le lien</button><button class="btn btn-primary btn-sm" data-copy="${esc(msgD)}">Copier le message</button><a class="btn btn-ghost btn-sm" href="https://wa.me/?text=${encodeURIComponent(msgD)}" target="_blank" rel="noopener">Envoyer sur WhatsApp</a></div></div>
+      <div class="stack" style="gap:8px"><b>Recruter des annonceurs</b><div class="linkbox"><span>${esc(linkA)}</span></div>
+        <div class="row"><button class="btn btn-ghost btn-sm" data-copy="${esc(linkA)}">Copier le lien</button><button class="btn btn-primary btn-sm" data-copy="${esc(msgA)}">Copier le message</button><a class="btn btn-ghost btn-sm" href="https://wa.me/?text=${encodeURIComponent(msgA)}" target="_blank" rel="noopener">Envoyer sur WhatsApp</a></div></div>
+    </div>
+    <details><summary class="small"><b>Comment je gagne ?</b></summary><ul class="small stack" style="padding-left:18px;margin:10px 0 0;gap:6px">
+      <li><b>${pct(d.rate)} % de tout ce que dépensent les annonceurs</b> inscrits avec ton lien, pendant ${d.months} mois après leur inscription.</li>
+      <li><b>${fcfa(d.bonus_unit)} F par diffuseur</b> inscrit avec ton lien, dès qu'il a reçu son premier retrait.</li>
+      <li>Plus tu ramènes de monde, plus ton taux monte : Or, puis Elite.</li>
+      <li>Tes gains s'ajoutent à ton solde et se retirent comme d'habitude. Les comptes créés pour tricher sont annulés.</li></ul></details>
+    ${d.filleuls.length ? `<div class="table"><table><thead><tr><th>Filleul</th><th>Type</th><th>Inscrit le</th><th>Statut</th><th class="n">Dépense (FCFA)</th></tr></thead><tbody>
+      ${d.filleuls.map((f) => `<tr><td>${esc(f.full_name || "—")}<div class="small muted">${esc(f.city || "")}</div></td><td>${f.role === "annonceur" ? "Annonceur" : "Diffuseur"}</td><td>${dateFr(f.created_at)}</td><td>${f.actif ? `<span class="pill p-ok">Actif</span>` : `<span class="pill p-mute">Inscrit</span>`}</td><td class="n">${f.role === "annonceur" ? fcfa(f.depense) : "–"}</td></tr>`).join("")}
+      </tbody></table></div>` : `<div class="empty small">Pas encore de filleul. Partage tes liens : chaque inscription apparaîtra ici.</div>`}
+  </section>`;
+  box.querySelectorAll("[data-copy]").forEach((b) => b.onclick = () => copy(b.dataset.copy, b));
 }
 
 function onboardingCard(p, s) {
@@ -887,12 +929,12 @@ async function viewAdmin(tab) {
   app.innerHTML = `<div class="spinner"></div>`;
   const ov = await rpc("admin_overview");
   const tabs = [["campagnes", "Campagnes", ov.campagnes_attente], ["recharges", "Recharges", ov.recharges_attente], ["retraits", "Retraits", ov.retraits_attente],
-    ["diffuseurs", "Diffuseurs"], ["annonceurs", "Annonceurs"], ["clics", "Clics"], ["reglages", "Réglages"]];
-  const marge = ov.ca_total - ov.reverse_total;
+    ["diffuseurs", "Diffuseurs"], ["ambassadeurs", "Ambassadeurs"], ["annonceurs", "Annonceurs"], ["clics", "Clics"], ["reglages", "Réglages"]];
+  const marge = ov.ca_total - ov.reverse_total - (ov.commissions_total || 0);
   app.innerHTML = `<main class="wrap">
     <div class="page-head"><div><p class="eyebrow">Administration</p><h1 style="font-size:2rem">Tableau de bord StatuPub</h1></div><button class="btn btn-ghost btn-sm" id="refresh">Actualiser</button></div>
     <div class="grid g4" style="margin-bottom:20px">
-      <div class="card wallet kpi"><span class="eyebrow">Marge plateforme</span><span class="big">${fcfa(marge)}</span><span class="small muted">FCFA · ${fcfa(ov.ca_total)} facturés, ${fcfa(ov.reverse_total)} reversés</span></div>
+      <div class="card wallet kpi"><span class="eyebrow">Marge plateforme</span><span class="big">${fcfa(marge)}</span><span class="small muted">FCFA · ${fcfa(ov.ca_total)} facturés, ${fcfa(ov.reverse_total)} aux diffuseurs, ${fcfa(ov.commissions_total || 0)} aux ambassadeurs</span></div>
       <div class="card kpi"><span class="eyebrow">Clics aujourd'hui</span><span class="num">${fcfa(ov.clics_valides_jour)}</span><span class="small muted">${fcfa(ov.clics_invalides_jour)} bloqués (${ov.clics_valides_jour + ov.clics_invalides_jour ? Math.round(100 * ov.clics_invalides_jour / (ov.clics_valides_jour + ov.clics_invalides_jour)) : 0} %)</span></div>
       <div class="card kpi"><span class="eyebrow">Utilisateurs</span><span class="num">${fcfa(ov.diffuseurs)}</span><span class="small muted">diffuseurs · ${fcfa(ov.annonceurs)} annonceurs</span></div>
       <div class="card kpi"><span class="eyebrow">À payer</span><div>${money(ov.retraits_attente_montant)}</div><span class="small muted">${ov.retraits_attente} retrait(s) en attente</span></div>
@@ -902,7 +944,7 @@ async function viewAdmin(tab) {
   app.querySelectorAll("[data-t]").forEach((b) => b.onclick = () => location.hash = "#/admin?t=" + b.dataset.t);
   $("#refresh").onclick = () => viewAdmin(tab);
   const body = $("#admin-body");
-  const fn = { campagnes: adminCampaigns, recharges: adminRecharges, retraits: adminWithdrawals, diffuseurs: adminDiffuseurs, annonceurs: adminAnnonceurs, clics: adminClicks, reglages: adminSettings }[tab] || adminCampaigns;
+  const fn = { campagnes: adminCampaigns, recharges: adminRecharges, retraits: adminWithdrawals, diffuseurs: adminDiffuseurs, ambassadeurs: adminAmbassadors, annonceurs: adminAnnonceurs, clics: adminClicks, reglages: adminSettings }[tab] || adminCampaigns;
   try { await fn(body, () => viewAdmin(tab)); } catch (e) { body.innerHTML = `<div class="notice warn">${esc(errMsg(e))}</div>`; }
 }
 
@@ -982,14 +1024,29 @@ async function adminWithdrawals(body, reload) {
 }
 
 async function adminDiffuseurs(body, reload) {
-  const rows = await rpc("admin_diffuseurs");
+  const [rows, ambs] = await Promise.all([rpc("admin_diffuseurs"), rpc("admin_ambassadors")]);
+  const isAmb = new Set(ambs.map((a) => a.id));
   body.innerHTML = `<div class="stack"><p class="small muted">Triés par nombre de clics bloqués. Un diffuseur avec beaucoup de clics bloqués, ou plus de clics que de vues, est suspect.</p>
     <div class="table"><table><thead><tr><th>Diffuseur</th><th>Ville</th><th class="n">Vues moy.</th><th class="n">Clics valides</th><th class="n">Bloqués</th><th class="n">Aujourd'hui</th><th class="n">Gains</th><th>Chaîne</th><th></th></tr></thead><tbody>
     ${rows.map((d) => { const tot = Number(d.valid_clicks) + Number(d.invalid_clicks); const susp = (tot > 10 && d.invalid_clicks / tot > 0.4) || (d.avg_views > 0 && d.clicks_today > d.avg_views * 0.5);
-      return `<tr><td>${esc(d.full_name)}<div class="small muted num">${esc(d.phone)}</div>${susp ? `<span class="pill p-bad">Suspect</span>` : ""}${d.is_blocked ? `<span class="pill p-mute">Bloqué</span>` : ""}</td><td>${esc(d.city)}</td><td class="n">${fcfa(d.avg_views)}</td><td class="n">${fcfa(d.valid_clicks)}</td><td class="n">${fcfa(d.invalid_clicks)}</td><td class="n">${fcfa(d.clicks_today)}</td><td class="n">${fcfa(d.earnings)}</td><td>${d.channel_joined ? "Oui" : "Non"}</td>
-      <td><button class="btn ${d.is_blocked ? "btn-ghost" : "btn-bad"} btn-sm" data-u="${d.id}" data-b="${!d.is_blocked}">${d.is_blocked ? "Débloquer" : "Bloquer"}</button></td></tr>`; }).join("") || `<tr><td colspan="9" class="muted">Aucun diffuseur.</td></tr>`}
+      return `<tr><td>${esc(d.full_name)}<div class="small muted num">${esc(d.phone)}</div>${susp ? `<span class="pill p-bad">Suspect</span>` : ""}${d.is_blocked ? `<span class="pill p-mute">Bloqué</span>` : ""}${isAmb.has(d.id) ? `<span class="pill p-info">Ambassadeur</span>` : ""}</td><td>${esc(d.city)}</td><td class="n">${fcfa(d.avg_views)}</td><td class="n">${fcfa(d.valid_clicks)}</td><td class="n">${fcfa(d.invalid_clicks)}</td><td class="n">${fcfa(d.clicks_today)}</td><td class="n">${fcfa(d.earnings)}</td><td>${d.channel_joined ? "Oui" : "Non"}</td>
+      <td><div class="row" style="flex-wrap:nowrap">${isAmb.has(d.id) ? "" : `<button class="btn btn-ghost btn-sm" data-amb="${d.id}">Nommer ambassadeur</button>`}<button class="btn ${d.is_blocked ? "btn-ghost" : "btn-bad"} btn-sm" data-u="${d.id}" data-b="${!d.is_blocked}">${d.is_blocked ? "Débloquer" : "Bloquer"}</button></div></td></tr>`; }).join("") || `<tr><td colspan="9" class="muted">Aucun diffuseur.</td></tr>`}
     </tbody></table></div></div>`;
+  body.querySelectorAll("[data-amb]").forEach((b) => b.onclick = async () => { busy(b, true); try { const code = await rpc("admin_set_ambassador", { p_user: b.dataset.amb, p_on: true }); toast("Ambassadeur nommé · code " + code); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } });
   body.querySelectorAll("[data-u]").forEach((b) => b.onclick = async () => { busy(b, true); try { await rpc("admin_set_blocked", { p_user: b.dataset.u, p_blocked: b.dataset.b === "true" }); toast("Mis à jour"); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } });
+}
+
+async function adminAmbassadors(body, reload) {
+  const rows = await rpc("admin_ambassadors");
+  body.innerHTML = `<div class="stack">
+    <div class="notice info small"><span>Pour nommer un ambassadeur, va dans l'onglet <b>Diffuseurs</b> et clique sur « Nommer ambassadeur ». Ses commissions et primes sont calculées automatiquement et ajoutées à son solde retirable.</span></div>
+    ${rows.length ? `<div class="table"><table><thead><tr><th>Ambassadeur</th><th>Code</th><th>Niveau</th><th class="n">Annonceurs actifs / inscrits</th><th class="n">Diffuseurs actifs / inscrits</th><th class="n">Commissions</th><th class="n">Primes</th><th></th></tr></thead><tbody>
+    ${rows.map((a) => { const [n, c] = LEVELS[a.level] || LEVELS.ambassadeur; return `<tr><td>${esc(a.full_name)}<div class="small muted num">${esc(a.phone)} · ${esc(a.city)}</div></td><td class="num">${esc(a.code)}<div><button class="btn btn-ghost btn-sm" data-copy="https://statupub.com/?ref=${esc(a.code)}">Copier le lien</button></div></td><td><span class="pill ${c}">${n}</span></td>
+      <td class="n">${a.annonceurs_actifs} / ${a.annonceurs_inscrits}</td><td class="n">${a.diffuseurs_actifs} / ${a.diffuseurs_inscrits}</td><td class="n">${fcfa(a.commission)}</td><td class="n">${fcfa(a.bonus)}</td>
+      <td><button class="btn btn-bad btn-sm" data-off="${a.id}">Retirer</button></td></tr>`; }).join("")}
+    </tbody></table></div>` : `<div class="empty">Aucun ambassadeur pour l'instant.</div>`}</div>`;
+  body.querySelectorAll("[data-copy]").forEach((b) => b.onclick = () => copy(b.dataset.copy, b));
+  body.querySelectorAll("[data-off]").forEach((b) => b.onclick = async () => { busy(b, true); try { await rpc("admin_set_ambassador", { p_user: b.dataset.off, p_on: false }); toast("Ambassadeur retiré"); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } });
 }
 
 async function adminAnnonceurs(body) {
@@ -1019,10 +1076,14 @@ async function adminSettings(body) {
     <h3 style="margin-top:8px">Anti-fraude</h3>
     <div class="grid g2">${f("hold_hours", "Délai de vérification des gains (heures)", "Avant que les gains soient retirables")}${f("daily_cap_per_link", "Clics max par jour et par diffuseur", "Sur une même campagne")}
     ${f("max_clicks_per_ip_day", "Clics max par jour et par connexion (IP)", "Attention : beaucoup de mobiles partagent une même IP")}${f("max_clicks_per_ua_link_day", "Clics max par jour d'un même modèle d'appareil", "Sur le lien d'un même diffuseur")}</div>
+    <h3 style="margin-top:8px">Programme ambassadeur</h3>
+    <div class="grid g2">${f("amb_rate_base", "Commission niveau Ambassadeur", "0.10 = 10 % des dépenses des annonceurs parrainés", "number", "0.01")}${f("amb_rate_or", "Commission niveau Or", "", "number", "0.01")}
+    ${f("amb_rate_elite", "Commission niveau Elite", "", "number", "0.01")}${f("amb_months", "Durée de la commission (mois)", "Après l'inscription de l'annonceur")}
+    ${f("amb_diffuseur_bonus", "Prime par diffuseur actif (FCFA)", "Versée après le premier retrait du filleul")}</div>
     <button class="btn btn-primary" id="st-btn" style="align-self:flex-start">Enregistrer les réglages</button></form>`;
   $("#st-form").onsubmit = async (e) => {
     e.preventDefault(); const btn = $("#st-btn"); busy(btn, true);
-    const p = {}; ["whatsapp_channel_url", "wave_number", "om_number", "cpc_min", "payout_ratio", "min_budget", "min_withdrawal", "hold_hours", "daily_cap_per_link", "max_clicks_per_ip_day", "max_clicks_per_ua_link_day"].forEach((k) => p[k] = $("#st-" + k).value.trim());
+    const p = {}; ["whatsapp_channel_url", "wave_number", "om_number", "cpc_min", "payout_ratio", "min_budget", "min_withdrawal", "hold_hours", "daily_cap_per_link", "max_clicks_per_ip_day", "max_clicks_per_ua_link_day", "amb_rate_base", "amb_rate_or", "amb_rate_elite", "amb_months", "amb_diffuseur_bonus"].forEach((k) => p[k] = $("#st-" + k).value.trim());
     try { await rpc("admin_update_settings", { p }); state.settings = null; await loadProfile(); toast("Réglages enregistrés"); busy(btn, false); }
     catch (err) { toast(errMsg(err), true); busy(btn, false); }
   };
@@ -1032,7 +1093,14 @@ async function adminSettings(body) {
 sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_IN" || ev === "SIGNED_OUT") setTimeout(async () => { const before = state.profile?.id; await loadProfile(); if (before !== state.profile?.id) route(); }, 0); });
 window.addEventListener("hashchange", route);
 loadProfile().then(() => {
-  const lien = new URLSearchParams(location.search).get("lien");
+  const qs = new URLSearchParams(location.search);
+  const ref = (qs.get("ref") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
+  if (ref) {
+    try { localStorage.setItem("sp_ref", ref); } catch {}
+    state.ref = ref;
+    history.replaceState(null, "", location.pathname + (location.hash || (state.profile ? "" : "#/inscription?role=" + (qs.get("r") === "a" ? "annonceur" : "diffuseur"))));
+  }
+  const lien = qs.get("lien");
   if (lien) { history.replaceState(null, "", location.pathname + location.hash);
     setTimeout(() => toast(lien === "erreur" ? "Ce lien est momentanément indisponible. Réessayez dans un instant." : "Ce lien publicitaire n'existe pas ou a expiré.", true), 400); }
   return route();
