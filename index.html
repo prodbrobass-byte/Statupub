@@ -1314,7 +1314,25 @@ async function adminMessages(body, reload, sel) {
 /* ==================== Démarrage ==================== */
 sb.auth.onAuthStateChange((ev) => { if (ev === "PASSWORD_RECOVERY") setTimeout(newPasswordModal, 300); if (ev === "SIGNED_IN" || ev === "SIGNED_OUT") setTimeout(async () => { const before = state.profile?.id; await loadProfile(); if (before !== state.profile?.id) route(); }, 0); });
 window.addEventListener("hashchange", route);
-loadProfile().then(() => {
+async function handleAuthLinks() {
+  // Erreur renvoyée par un lien e-mail (ex. lien expiré)
+  if (/^#error=/.test(location.hash)) {
+    const hp = new URLSearchParams(location.hash.slice(1));
+    const code = hp.get("error_code") || "";
+    history.replaceState(null, "", location.pathname + "#/connexion");
+    setTimeout(() => toast(code === "otp_expired" ? "Ce lien a expiré ou a déjà été utilisé. Redemande un nouveau lien." : "Lien invalide. Redemande un nouveau lien.", true), 400);
+  }
+  // Lien « mot de passe oublié » : ?token_hash=…&type=recovery
+  const qs = new URLSearchParams(location.search);
+  const th = qs.get("token_hash"), type = qs.get("type");
+  if (th && type) {
+    history.replaceState(null, "", location.pathname + location.hash);
+    const { error } = await sb.auth.verifyOtp({ token_hash: th, type });
+    if (error) { setTimeout(() => toast(/expired|invalid/i.test(error.message) ? "Ce lien a expiré ou a déjà été utilisé. Redemande un nouveau lien." : errMsg(error), true), 400); location.hash = "#/connexion"; }
+    else if (type === "recovery") setTimeout(newPasswordModal, 600);
+  }
+}
+handleAuthLinks().then(loadProfile).then(() => {
   const qs = new URLSearchParams(location.search);
   const ref = (qs.get("ref") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
   if (ref) {
