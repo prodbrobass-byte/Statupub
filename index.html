@@ -406,15 +406,17 @@ function barChart(rows, key = "valid_clicks", label = "clics") {
 function renderNav() {
   setupChat();
   setTimeout(renderInstallBtn, 0);
+  setTimeout(renderPushBtn, 0);
   const nav = $("#nav");
   if (!state.profile) {
+    $("#push-ask")?.remove();
     nav.innerHTML = `<a class="btn btn-ghost btn-sm" href="#/connexion">Connexion</a><a class="btn btn-primary btn-sm" href="#/inscription">Créer un compte</a>`;
   } else {
     const home = { annonceur: "#/annonceur", diffuseur: "#/diffuseur", admin: "#/admin" }[state.profile.role];
     nav.innerHTML = `<button class="who" id="who-btn" title="Changer mon mot de passe" style="background:none;border:none;color:inherit;font:inherit;cursor:pointer">${esc(state.profile.full_name || state.session.user.email)}</button>
       <a class="btn btn-ghost btn-sm" href="${home}">Mon espace</a>
       <button class="btn btn-ghost btn-sm" id="logout" aria-label="Déconnexion">Quitter</button>`;
-    $("#logout").onclick = async () => { await sb.auth.signOut(); location.hash = "#/"; };
+    $("#logout").onclick = async () => { await disablePushForThisDevice(); await sb.auth.signOut(); location.hash = "#/"; };
     $("#who-btn").onclick = newPasswordModal;
   }
 }
@@ -442,6 +444,7 @@ async function route() {
   const role = state.profile?.role;
   const guard = (r) => { if (!state.profile) { try { sessionStorage.setItem("sp_after", location.hash); } catch {} state.after = location.hash; location.hash = "#/connexion"; return false; } if (role !== r) { location.hash = "#/" + role; return false; } return true; };
   if (state.profile?.needs_onboarding) return viewOnboarding();
+  if (/(^|&)chat=1/.test(q || "") && state.profile) setTimeout(() => { if (canChat() && !chat.open) openChat(); }, 600);
   try {
     if (path === "/connexion") return viewAuth("login");
     if (path === "/inscription") return viewAuth("signup", new URLSearchParams(q).get("role"));
@@ -1409,8 +1412,79 @@ async function installApp() {
 }
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
 
+/* ==================== Notifications push ==================== */
+const VAPID_PUBLIC = "BKhdA6JvO1dd3hOeNamefFTlfhJOGiDR5iRcb3SjX0hFoFJ73CJusBVhQZ2WsVLXTzYCEj_C-cWssUH0BCTnfrc";
+const pushOk = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const b64u = (s) => { const p = "=".repeat((4 - s.length % 4) % 4); const r = atob((s + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from([...r].map((c) => c.charCodeAt(0))); };
+function pushState() {
+  if (isIOS() && !isStandalone()) return "ios-install";
+  if (!pushOk()) return "unsupported";
+  if (Notification.permission === "denied") return "denied";
+  return Notification.permission === "granted" ? "granted" : "off";
+}
+async function pushSub(create) {
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub && create) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(VAPID_PUBLIC) });
+  return sub;
+}
+async function savePush(sub) {
+  const j = sub.toJSON();
+  await rpc("save_push_subscription", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_ua: navigator.userAgent });
+}
+async function syncPush() {   // à chaque connexion : rattache cet appareil au compte connecté
+  if (!state.profile || pushState() !== "granted") return renderPushBtn();
+  try { const sub = await pushSub(true); if (sub) await savePush(sub); } catch (e) { console.warn("push", e); }
+  renderPushBtn();
+}
+async function enablePush(btn) {
+  const st = pushState();
+  if (st === "ios-install") return openModal(`<div class="row between"><h2>Activer les notifications</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
+    <p class="small">Sur iPhone, les notifications marchent uniquement quand StatuPub est <b>installé sur l'écran d'accueil</b> (iOS 16.4 ou plus récent).</p>
+    <ol class="steps small"><li><div><b>Installe StatuPub</b><p class="muted">Dans Safari : bouton Partager → « Sur l'écran d'accueil » → « Ajouter ».</p></div></li>
+    <li><div><b>Ouvre StatuPub depuis l'icône</b><p class="muted">Connecte-toi, puis appuie sur 🔔 en haut.</p></div></li></ol>
+    <button class="btn btn-primary" id="ios-inst">Voir comment installer</button>`, (m) => { $("#ios-inst", m).onclick = () => { closeModal(); installApp(); }; });
+  if (st === "unsupported") return toast("Ce navigateur ne gère pas les notifications. Essaie avec Chrome sur Android.", true);
+  if (st === "denied") return openModal(`<div class="row between"><h2>Notifications bloquées</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
+    <p class="small">Tu as bloqué les notifications pour StatuPub. Pour les réactiver :</p>
+    <ol class="steps small"><li><div><b>Appuie sur le cadenas 🔒</b><p class="muted">À gauche de l'adresse statupub.com (ou Paramètres du téléphone → Applications → StatuPub).</p></div></li>
+    <li><div><b>Notifications → Autoriser</b><p class="muted">Puis recharge la page et appuie sur 🔔.</p></div></li></ol>`);
+  if (btn) busy(btn, true);
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") { toast("Notifications non autorisées", true); return; }
+    const sub = await pushSub(true); await savePush(sub);
+    try { localStorage.setItem("sp_push_ask", "done"); } catch {}
+    $("#push-ask")?.remove();
+    toast("🔔 Notifications activées ! Tu seras prévenu même quand l'app est fermée.");
+  } catch (e) { console.error(e); toast("Activation impossible : " + errMsg(e), true); }
+  finally { if (btn) busy(btn, false); renderPushBtn(); }
+}
+async function disablePushForThisDevice() {   // à la déconnexion : cet appareil ne reçoit plus les notifications du compte
+  try { const sub = pushOk() && await pushSub(false); if (sub) await sb.from("push_subscriptions").delete().eq("endpoint", sub.endpoint); } catch {}
+}
+function renderPushBtn() {
+  $("#push-btn")?.remove();
+  const nav = $("#nav"); if (!nav || !state.profile) return;
+  const st = pushState();
+  if (st === "granted" || st === "unsupported") { $("#push-ask")?.remove(); return; }
+  nav.insertAdjacentHTML("afterbegin", `<button class="btn btn-ghost btn-sm" id="push-btn" aria-label="Activer les notifications" title="Activer les notifications">🔔</button>`);
+  $("#push-btn").onclick = (e) => enablePush(e.currentTarget);
+  let asked = null; try { asked = localStorage.getItem("sp_push_ask"); } catch {}
+  if (!asked && st === "off" && !$("#push-ask")) {
+    const who = { annonceur: "quand ta campagne est validée, ton solde crédité ou qu'on te répond", diffuseur: "dès qu'une nouvelle campagne paie, et quand ton retrait est envoyé", admin: "à chaque campagne à valider, retrait ou message" }[state.profile.role] || "des nouveautés";
+    document.body.insertAdjacentHTML("beforeend", `<div class="card" id="push-ask" role="dialog" aria-label="Activer les notifications" style="position:fixed;left:12px;right:12px;bottom:12px;z-index:60;max-width:440px;margin:0 auto;box-shadow:0 10px 30px rgba(0,0,0,.18)">
+      <div class="row" style="flex-wrap:nowrap;align-items:flex-start;gap:12px"><div style="font-size:28px;line-height:1">🔔</div><div><b>Active les notifications</b><p class="small muted" style="margin:4px 0 10px">Sois prévenu sur ton téléphone ${who}, même quand StatuPub est fermé.</p>
+      <div class="row"><button class="btn btn-primary btn-sm" id="push-yes">Activer</button><button class="btn btn-ghost btn-sm" id="push-later">Plus tard</button></div></div></div></div>`);
+    $("#push-yes").onclick = (e) => enablePush(e.currentTarget);
+    $("#push-later").onclick = () => { try { localStorage.setItem("sp_push_ask", "later"); } catch {} $("#push-ask")?.remove(); };
+  }
+}
+navigator.serviceWorker?.addEventListener("message", (e) => { if (e.data?.type === "sp-open") location.href = e.data.url; });
+
+
 /* ==================== Démarrage ==================== */
-sb.auth.onAuthStateChange((ev) => { if (ev === "PASSWORD_RECOVERY") setTimeout(newPasswordModal, 300); if (ev === "SIGNED_IN" || ev === "SIGNED_OUT") setTimeout(async () => { const before = state.profile?.id; await loadProfile(); if (before !== state.profile?.id) route(); }, 0); });
+sb.auth.onAuthStateChange((ev) => { if (ev === "PASSWORD_RECOVERY") setTimeout(newPasswordModal, 300); if (ev === "SIGNED_IN" || ev === "SIGNED_OUT") setTimeout(async () => { const before = state.profile?.id; await loadProfile(); if (before !== state.profile?.id) { route(); syncPush(); } }, 0); });
 window.addEventListener("hashchange", route);
 async function handleAuthLinks() {
   // Erreur renvoyée par un lien e-mail (ex. lien expiré)
@@ -1441,6 +1515,7 @@ handleAuthLinks().then(loadProfile).then(() => {
   const lien = qs.get("lien");
   if (lien) { history.replaceState(null, "", location.pathname + location.hash);
     setTimeout(() => toast(lien === "erreur" ? "Ce lien est momentanément indisponible. Réessayez dans un instant." : "Ce lien publicitaire n'existe pas ou a expiré.", true), 400); }
+  setTimeout(syncPush, 1500);
   return route();
 }).catch((e) => { app.innerHTML = `<main class="wrap"><div class="notice warn">Impossible de joindre le serveur. Vérifiez votre connexion internet. (${esc(errMsg(e))})</div></main>`; });
 </script>

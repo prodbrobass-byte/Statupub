@@ -1,6 +1,6 @@
 // StatuPub — service worker : l'app s'ouvre vite et affiche une page propre hors connexion.
 // Les données (Supabase, paiements, clics) ne sont JAMAIS mises en cache : elles viennent toujours du serveur.
-const VERSION = "statupub-v1";
+const VERSION = "statupub-v2";
 const SHELL = ["/", "/index.html", "/offline.html", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/logo/statupub-icone-transparent.png"];
 
 self.addEventListener("install", (e) => {
@@ -23,4 +23,31 @@ self.addEventListener("fetch", (e) => {
       return cached || net;
     })
   );
+});
+
+// ---------- Notifications push (reçues même quand l'app est fermée) ----------
+self.addEventListener("push", (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data && e.data.text() }; }
+  const title = d.title || "StatuPub";
+  e.waitUntil(self.registration.showNotification(title, {
+    body: d.body || "",
+    icon: "/icons/icon-192.png",
+    badge: "/icons/favicon-32.png",
+    tag: d.tag || undefined,
+    renotify: !!d.tag,
+    vibrate: [120, 60, 120],
+    data: { url: d.url || "/" },
+  }));
+});
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const target = new URL(e.notification.data?.url || "/", self.location.origin).href;
+  e.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const w of wins) {
+      if (new URL(w.url).origin === self.location.origin) { await w.focus(); try { await w.navigate(target); } catch { w.postMessage({ type: "sp-open", url: target }); } return; }
+    }
+    await self.clients.openWindow(target);
+  })());
 });
