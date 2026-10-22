@@ -292,6 +292,7 @@ const PAY_FN = SUPABASE_URL + "/functions/v1/paydunya";
 function afterLogin() {
   let h = state.after; try { h = h || sessionStorage.getItem("sp_after"); sessionStorage.removeItem("sp_after"); } catch {}
   state.after = null; const role = state.profile?.role || "";
+  if (h === "#/avis" && (role === "annonceur" || role === "diffuseur")) return "#/" + role + "?avis=1";
   return h && h.startsWith("#/" + role) ? h : "#/" + role;
 }
 function getRef() { if (state.ref) return state.ref; try { return localStorage.getItem("sp_ref") || ""; } catch { return ""; } }
@@ -467,8 +468,14 @@ async function route() {
   const role = state.profile?.role;
   const guard = (r) => { if (!state.profile) { try { sessionStorage.setItem("sp_after", location.hash); } catch {} state.after = location.hash; location.hash = "#/connexion"; return false; } if (role !== r) { location.hash = "#/" + role; return false; } return true; };
   if (state.profile?.needs_onboarding) return viewOnboarding();
+  if (/(^|&)avis=1/.test(q || "")) state.focusReview = true;
   if (/(^|&)chat=1/.test(q || "") && state.profile) setTimeout(() => { if (canChat() && !chat.open) openChat(); }, 600);
   try {
+    if (path === "/avis") {
+      if (!state.profile) { try { sessionStorage.setItem("sp_after", "#/avis"); } catch {} state.after = "#/avis"; setTimeout(() => toast("Connecte-toi pour laisser ton avis ⭐"), 300); location.hash = "#/connexion"; return; }
+      if (role === "annonceur" || role === "diffuseur") { location.hash = "#/" + role + "?avis=1"; return; }
+      location.hash = "#/" + role; return;
+    }
     if (path === "/connexion") return viewAuth("login");
     if (path === "/inscription") return viewAuth("signup", new URLSearchParams(q).get("role"));
     if (path === "/annonceur") {
@@ -1167,11 +1174,14 @@ async function renderReviewBox() {
   const done = (r) => {
     if (!r) return form(null);
     const st = { en_attente: "en cours de vérification", publie: "publié sur la page d'accueil ✅", masque: "non publié" }[r.status] || "";
-    box.innerHTML = `<div class="row between" style="align-items:flex-start"><div><h2 id="rv-t" style="font-size:1.25rem">Ton avis</h2><p class="small muted" style="margin:2px 0 0">Statut : ${st}</p></div><button class="btn btn-ghost btn-sm" id="rv-edit">Modifier</button></div>
+    box.innerHTML = `<div class="row between" style="align-items:flex-start"><div><h2 id="rv-t" style="font-size:1.25rem">Ton avis</h2><p class="small muted" style="margin:2px 0 0">Statut : ${st}</p></div>${r.status === "publie" ? "" : `<button class="btn btn-ghost btn-sm" id="rv-edit">Modifier</button>`}</div>
       <div class="stars">${"★".repeat(r.rating)}<span style="color:var(--line)">${"★".repeat(5 - r.rating)}</span></div><p style="margin:0">« ${esc(r.body)} »</p>`;
-    $("#rv-edit").onclick = () => form(r);
+    $("#rv-edit")?.addEventListener("click", () => form(r));
+    if (r.status === "publie") box.insertAdjacentHTML("beforeend", `<p class="small muted" style="margin:0">Merci pour ton avis 🙏 Une fois publié, il ne peut plus être modifié.</p>`);
   };
   done(mine);
+  if (state.focusReview) { state.focusReview = false; history.replaceState(null, "", location.pathname + "#/" + p.role);
+    setTimeout(() => { box.scrollIntoView({ behavior: "smooth", block: "center" }); box.style.outline = "3px solid var(--saffron)"; box.style.outlineOffset = "3px"; }, 300); }
 }
 
 /* ==================== ADMIN ==================== */
