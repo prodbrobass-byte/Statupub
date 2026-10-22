@@ -270,6 +270,11 @@ const money = (n) => `<span class="num">${fcfa(n)}</span><span class="unit">FCFA
 const dateFr = (d) => new Date(d).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 const dateTimeFr = (d) => new Date(d).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const PAY_FN = SUPABASE_URL + "/functions/v1/paydunya";
+function afterLogin() {
+  let h = state.after; try { h = h || sessionStorage.getItem("sp_after"); sessionStorage.removeItem("sp_after"); } catch {}
+  state.after = null; const role = state.profile?.role || "";
+  return h && h.startsWith("#/" + role) ? h : "#/" + role;
+}
 function getRef() { if (state.ref) return state.ref; try { return localStorage.getItem("sp_ref") || ""; } catch { return ""; } }
 const EYE_OPEN = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
 const EYE_SHUT = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.9 8.4 2 12 2 12s3.5 7 10 7a9.6 9.6 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
@@ -435,7 +440,7 @@ async function route() {
   renderNav();
   window.scrollTo(0, 0);
   const role = state.profile?.role;
-  const guard = (r) => { if (!state.profile) { location.hash = "#/connexion"; return false; } if (role !== r) { location.hash = "#/" + role; return false; } return true; };
+  const guard = (r) => { if (!state.profile) { try { sessionStorage.setItem("sp_after", location.hash); } catch {} state.after = location.hash; location.hash = "#/connexion"; return false; } if (role !== r) { location.hash = "#/" + role; return false; } return true; };
   if (state.profile?.needs_onboarding) return viewOnboarding();
   try {
     if (path === "/connexion") return viewAuth("login");
@@ -448,7 +453,7 @@ async function route() {
       return viewAnnonceur();
     }
     if (path.startsWith("/campagne/")) return guard("annonceur") && viewCampaign(path.split("/")[2]);
-    if (path === "/diffuseur") return guard("diffuseur") && viewDiffuseur();
+    if (path === "/diffuseur") { const c = new URLSearchParams(q).get("c"); if (c) state.focusCamp = c; return guard("diffuseur") && viewDiffuseur(); }
     if (path === "/admin") return guard("admin") && viewAdmin(new URLSearchParams(q).get("t") || "campagnes");
     return viewHome();
   } catch (e) {
@@ -607,7 +612,7 @@ function viewAuth(mode, roleParam) {
         }
       }
       await loadProfile();
-      location.hash = "#/" + (state.profile?.role || "");
+      location.hash = afterLogin();
     } catch (err) { toast(errMsg(err), true); busy(btn, false); }
   };
 }
@@ -639,7 +644,7 @@ function viewOnboarding() {
       p_city: $("#ob-city").value.trim(), p_country: $("#ob-country").value, p_company: $("#ob-company").value.trim(), p_ref: ref };
     if (args.p_full_name.length < 2 || args.p_phone.replace(/\D/g, "").length < 7) return toast("Nom et téléphone obligatoires", true);
     busy(btn, true);
-    try { await rpc("complete_onboarding", args); await loadProfile(); toast("Bienvenue sur StatuPub !"); location.hash = "#/" + state.profile.role; route(); }
+    try { await rpc("complete_onboarding", args); await loadProfile(); toast("Bienvenue sur StatuPub !"); location.hash = afterLogin(); route(); }
     catch (err) { toast(errMsg(err), true); busy(btn, false); }
   };
 }
@@ -919,6 +924,13 @@ async function viewDiffuseur() {
     catch (err) { toast(errMsg(err), true); busy(b, false); }
   });
   app.querySelectorAll("[data-copy]").forEach((b) => b.onclick = () => copy(b.dataset.copy, b));
+  if (state.focusCamp) {
+    const id = state.focusCamp; state.focusCamp = null;
+    const el = document.getElementById("camp-" + id);
+    if (el) { el.style.outline = "3px solid var(--saffron)"; el.style.outlineOffset = "3px"; setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "center" }), 200);
+      if (!ready) toast("Active d'abord ton compte (étapes en haut), puis récupère ton lien."); }
+    else toast("Cette campagne est terminée ou n'est plus disponible.", true);
+  }
 }
 
 async function renderAmbassador(box) {
@@ -995,7 +1007,7 @@ function adCard(c, ready) {
   const link = c.my_code ? TRACK_BASE + c.my_code : "";
   const text = c.my_code ? `${c.message}\n\n👉 ${link}` : "";
   const isVid = /\.mp4($|\?)/i.test(c.media_url || "");
-  return `<article class="card ad">
+  return `<article class="card ad" id="camp-${c.id}">
     <div class="row between" style="flex-wrap:nowrap;align-items:flex-start"><h3 style="min-width:0;overflow-wrap:anywhere">${esc(c.title)}</h3><span class="gain">+${fcfa(c.payout)} F</span></div>
     <p class="small muted" style="margin-top:-8px">par clic · encore ${fcfa(c.remaining_clicks)} clics à gagner</p>
     ${c.media_url ? `<div class="ad-media">${isVid ? `<video src="${esc(c.media_url)}" controls playsinline muted preload="metadata"></video>` : `<img src="${esc(c.media_url)}" alt="Visuel à publier" loading="lazy">`}</div>` : ""}
@@ -1098,13 +1110,36 @@ async function adminCampaigns(body, reload) {
     <h2 style="margin-top:12px">Toutes les campagnes</h2>
     <div class="table"><table><thead><tr><th>Campagne</th><th>Annonceur</th><th class="n">Prix/clic</th><th class="n">Dépensé</th><th class="n">Budget</th><th>Statut</th><th></th></tr></thead><tbody>
     ${others.map((c) => `<tr><td>${esc(c.title)}</td><td>${esc(c.profiles?.company || c.profiles?.full_name)}</td><td class="n">${fcfa(c.cpc)}</td><td class="n">${fcfa(c.spent)}</td><td class="n">${fcfa(c.budget)}</td><td>${pill(c.status)}</td>
-      <td>${c.status === "active" ? `<button class="btn btn-ghost btn-sm" data-pause="${c.id}">Pause</button>` : c.status === "pause" ? `<button class="btn btn-ghost btn-sm" data-resume="${c.id}">Relancer</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Aucune campagne.</td></tr>`}
+      <td>${c.status === "active" ? `<div class="row" style="flex-wrap:nowrap"><button class="btn btn-primary btn-sm" data-share="${c.id}">📣 Annoncer</button><button class="btn btn-ghost btn-sm" data-pause="${c.id}">Pause</button></div>` : c.status === "pause" ? `<button class="btn btn-ghost btn-sm" data-resume="${c.id}">Relancer</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Aucune campagne.</td></tr>`}
     </tbody></table></div></div>`;
   const act = async (b, fn, args, msg) => { busy(b, true); try { await rpc(fn, args); toast(msg); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } };
   body.querySelectorAll("[data-ok]").forEach((b) => b.onclick = () => act(b, "admin_review_campaign", { p_id: b.dataset.ok, p_approve: true }, "Campagne approuvée et en ligne"));
   body.querySelectorAll("[data-no]").forEach((b) => b.onclick = () => { const r = $("#rej-" + b.dataset.no).value.trim(); if (!r) return toast("Indiquez le motif du refus", true); act(b, "admin_review_campaign", { p_id: b.dataset.no, p_approve: false, p_reason: r }, "Campagne refusée, budget rendu"); });
   body.querySelectorAll("[data-pause]").forEach((b) => b.onclick = () => act(b, "set_campaign_status", { p_id: b.dataset.pause, p_status: "pause" }, "Campagne en pause"));
+  body.querySelectorAll("[data-share]").forEach((b) => b.onclick = () => announceModal(data.find((c) => c.id === b.dataset.share)));
   body.querySelectorAll("[data-resume]").forEach((b) => b.onclick = () => act(b, "set_campaign_status", { p_id: b.dataset.resume, p_status: "active" }, "Campagne relancée"));
+}
+
+function announceModal(c) {
+  const s = state.settings || {};
+  const link = `https://statupub.com/#/diffuseur?c=${c.id}`;
+  const left = Math.max(0, Math.floor((c.budget - c.spent) / c.cpc));
+  const msg = `🆕 Nouvelle campagne StatuPub !\n\n📢 ${c.title}\n💰 +${fcfa(c.payout)} F par clic · ${fcfa(left)} clics à gagner\n\n👉 Récupère ton lien et publie la pub sur ton statut :\n${link}\n\nPas encore inscrit ? C'est gratuit : https://statupub.com`;
+  openModal(`<div class="row between"><h2>Annoncer la campagne</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
+    <p class="small muted">Envoie ce message dans la Chaîne StatuPub ou dans tes groupes. Le lien ouvre la campagne dans l'espace du diffuseur, qui récupère alors <b>son propre lien</b> pour que ses clics soient comptés.</p>
+    <div class="ad-text" style="white-space:pre-wrap">${esc(msg)}</div>
+    <div class="row">
+      <button class="btn btn-primary btn-sm" data-copy="${esc(msg)}">Copier le message</button>
+      <a class="btn btn-ghost btn-sm" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Envoyer sur WhatsApp</a>
+      <button class="btn btn-ghost btn-sm" data-copy="${esc(link)}">Copier le lien seul</button>
+    </div>
+    <div class="row">
+      ${c.media_url ? `<a class="btn btn-ghost btn-sm" href="${esc(c.media_url)}" target="_blank" rel="noopener">Ouvrir le visuel</a>` : ""}
+      ${s.whatsapp_channel_url ? `<a class="btn btn-ghost btn-sm" href="${esc(s.whatsapp_channel_url)}" target="_blank" rel="noopener">Ouvrir la Chaîne StatuPub</a>` : ""}
+    </div>
+    <p class="small muted">⚠️ N'envoie jamais le lien du site de l'annonceur directement : ces clics ne seraient ni comptés, ni payés.</p>`, (m) => {
+    m.querySelectorAll("[data-copy]").forEach((b) => b.onclick = () => copy(b.dataset.copy, b));
+  });
 }
 
 async function adminRequests(body, reload, table, fn, who, labelOk) {
