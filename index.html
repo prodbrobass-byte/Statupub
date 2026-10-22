@@ -344,6 +344,10 @@ function errMsg(e) {
   if (/User already registered/i.test(m)) return "Un compte existe déjà avec cet e-mail. Connectez-vous.";
   if (/Password should be/i.test(m)) return "Le mot de passe doit contenir au moins 6 caractères.";
   if (/rate limit/i.test(m)) return "Trop de tentatives. Patientez quelques minutes.";
+  if (/campaigns_message_check/.test(m)) return "Le texte de la pub doit faire entre 5 et 1 000 caractères.";
+  if (/campaigns_title_check/.test(m)) return "Le nom de la campagne doit faire entre 3 et 80 caractères.";
+  if (/campaigns_target_url_check/.test(m)) return "Le lien de destination doit commencer par https://";
+  if (/check constraint|violates/i.test(m)) return "Une information n'est pas valide. Vérifie les champs et réessaie.";
   return m;
 }
 async function rpc(fn, args) {
