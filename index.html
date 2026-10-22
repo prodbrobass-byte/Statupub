@@ -1448,6 +1448,7 @@ async function adminEmails(body, reload) {
         <label for="em-cta">Bouton (facultatif)<input id="em-cta" maxlength="40" value="${esc(draft.cta || "")}" placeholder="Voir les campagnes"></label>
         <label for="em-url">Lien du bouton<input id="em-url" type="url" value="${esc(draft.url || "")}" placeholder="https://statupub.com"></label>
       </div>
+      <label for="em-push" style="flex-direction:row;align-items:center;gap:10px"><input id="em-push" type="checkbox" ${draft.push === false ? "" : "checked"} style="width:auto"> Envoyer aussi une notification sur le téléphone<span class="hint" style="margin:0">(à ceux qui ont activé les notifications)</span></label>
       <div class="row"><button type="button" class="btn btn-ghost" id="em-test">M'envoyer un test</button><button class="btn btn-primary" id="em-send">Envoyer</button></div>
       <p class="small muted" style="margin:0">Chaque personne reçoit son propre e-mail (les adresses ne sont jamais visibles des autres), avec un lien pour se désinscrire. Les comptes bloqués et désinscrits sont exclus.</p>
     </form>
@@ -1455,10 +1456,10 @@ async function adminEmails(body, reload) {
       ${hist?.length ? `<div class="table"><table><thead><tr><th>Date</th><th>Objet</th><th>Pour</th><th class="n">Envoyés</th></tr></thead><tbody>${hist.map((h) => `<tr><td>${dateTimeFr(h.created_at)}</td><td>${esc(h.subject)}</td><td>${AUD[h.audience] || h.audience}</td><td class="n">${fcfa(h.sent_count)}${h.failed_count ? `<div class="small" style="color:var(--bad)">${h.failed_count} échec(s)</div>` : ""}</td></tr>`).join("")}</tbody></table></div>` : `<p class="small muted">Aucun envoi pour l'instant.</p>`}
     </div></div>`;
   let aud = draft.aud || "tous", count = 0;
-  const save = () => { try { localStorage.setItem("sp_mail_draft", JSON.stringify({ aud, subj: $("#em-subj").value, text: $("#em-text").value, cta: $("#em-cta").value, url: $("#em-url").value })); } catch {} };
+  const save = () => { try { localStorage.setItem("sp_mail_draft", JSON.stringify({ aud, subj: $("#em-subj").value, text: $("#em-text").value, cta: $("#em-cta").value, url: $("#em-url").value, push: $("#em-push").checked })); } catch {} };
   const refreshCount = async () => { $("#em-count").textContent = "Calcul…"; try { count = (await mailApi({ action: "count", audience: aud })).count; $("#em-count").innerHTML = `<b>${fcfa(count)}</b> destinataire${count > 1 ? "s" : ""}`; } catch (e) { $("#em-count").textContent = errMsg(e); } };
   body.querySelectorAll("[data-aud]").forEach((b) => b.onclick = () => { aud = b.dataset.aud; body.querySelectorAll("[data-aud]").forEach((x) => { x.setAttribute("aria-checked", String(x === b)); x.setAttribute("aria-selected", String(x === b)); }); save(); refreshCount(); });
-  ["#em-subj", "#em-text", "#em-cta", "#em-url"].forEach((id) => $(id).addEventListener("input", save));
+  ["#em-subj", "#em-text", "#em-cta", "#em-url", "#em-push"].forEach((id) => $(id).addEventListener("input", save)); $("#em-push").addEventListener("change", save);
   refreshCount();
   body.querySelectorAll("[data-emai]").forEach((b) => b.onclick = async () => {
     const t = $("#em-text").value.trim(); if (!t) return toast("Écris d'abord ton message", true);
@@ -1474,7 +1475,7 @@ async function adminEmails(body, reload) {
     if (subject.length < 3) { toast("Écris l'objet de l'e-mail", true); return null; }
     if (text.length < 10) { toast("Écris le message", true); return null; }
     if (cta_label && !/^https:\/\//.test(cta_url)) { toast("Le lien du bouton doit commencer par https://", true); return null; }
-    return { action, audience: aud, subject, text, cta_label, cta_url };
+    return { action, audience: aud, subject, text, cta_label, cta_url, push: $("#em-push").checked };
   };
   $("#em-test").onclick = async (e) => { const p = payload("test"); if (!p) return; busy(e.currentTarget, true);
     try { await mailApi(p); toast("Test envoyé sur ton adresse e-mail 📬"); } catch (err) { toast(errMsg(err), true); } busy(e.currentTarget, false); };
@@ -1484,7 +1485,7 @@ async function adminEmails(body, reload) {
     if (btn.dataset.sure !== "1") { btn.dataset.sure = "1"; btn.textContent = `Confirmer l'envoi à ${fcfa(count)} personne${count > 1 ? "s" : ""}`; btn.classList.add("btn-bad"); setTimeout(() => { btn.dataset.sure = ""; btn.textContent = "Envoyer"; btn.classList.remove("btn-bad"); }, 8000); return; }
     busy(btn, true);
     try { const r = await mailApi(p); try { localStorage.removeItem("sp_mail_draft"); } catch {}
-      toast(`${fcfa(r.sent)} e-mail${r.sent > 1 ? "s" : ""} envoyé${r.sent > 1 ? "s" : ""} ✅${r.failed ? ` · ${r.failed} échec(s)` : ""}`, !!r.failed); reload(); }
+      toast(`${fcfa(r.sent)} e-mail${r.sent > 1 ? "s" : ""} envoyé${r.sent > 1 ? "s" : ""} ✅${r.pushed ? " + notification" : ""}${r.failed ? ` · ${r.failed} échec(s)` : ""}`, !!r.failed); reload(); }
     catch (err) { toast(errMsg(err), true); busy(btn, false); }
   };
 }

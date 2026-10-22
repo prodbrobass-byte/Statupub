@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
     const { data: me } = await sb.from("profiles").select("role").eq("id", u.user.id).single();
     if (me?.role !== "admin") return json({ error: "Réservé à l'admin" }, 403);
 
-    const { action, audience, subject, text, cta_label, cta_url } = await req.json();
+    const { action, audience, subject, text, cta_label, cta_url, push } = await req.json();
     const aud = ["tous", "annonceur", "diffuseur", "ambassadeur"].includes(audience) ? audience : "tous";
     if (action === "count") {
       const { data, error } = await sb.rpc("mail_recipients", { p_audience: aud });
@@ -95,8 +95,14 @@ Deno.serve(async (req) => {
       if (i + 100 < list.length) await new Promise((ok) => setTimeout(ok, 600));
     }
     if (action === "send") await sb.from("email_blasts").insert({ subject: subj, audience: aud, sent_count: sent, failed_count: failed });
+    let pushed = false;
+    if (action === "send" && push && sent) {
+      const first = body.replace(/\{prenom\}\s*,?/gi, "").replace(/^(bonjour|salut|hello)[^\n]*\n+/i, "").trim();
+      const { error: pe } = await sb.rpc("push_notify", { p_users: list.map((r) => r.id), p_role: null, p_title: subj.replace(/\{prenom\}\s*,?\s*/gi, ""), p_body: first.slice(0, 160), p_url: cta && cta.url.startsWith("https://statupub.com") ? cta.url.replace("https://statupub.com", "") || "/" : "/" });
+      pushed = !pe;
+    }
     if (!sent) return json({ error: "Envoi refusé par Resend : " + lastErr }, 502);
-    return json({ sent, failed, error: failed ? lastErr : undefined });
+    return json({ sent, failed, pushed, error: failed ? lastErr : undefined });
   } catch (e) {
     return json({ error: (e as Error).message }, 500);
   }
