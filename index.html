@@ -1356,6 +1356,12 @@ async function adminMessages(body, reload, sel) {
     <div class="inbox">
       <div class="stack" style="gap:8px">${threads.length ? threads.map((t) => `<button class="thread" data-th="${t.thread_user}" aria-current="${t.thread_user === current}"><div class="row between" style="flex-wrap:nowrap"><b style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label(t)}</b>${Number(t.unread) ? `<span class="tab" style="padding:0"><span class="count">${t.unread}</span></span>` : ""}</div><div class="last">${t.last_from_admin ? "Vous : " : ""}${esc(t.last_body)}</div><div class="small muted">${dateTimeFr(t.last_at)}</div></button>`).join("") : `<div class="empty small">Aucune conversation pour l'instant.</div>`}</div>
       <div class="conv" id="conv">${current ? `<div class="chat-msgs" id="adm-msgs"><div class="spinner"></div></div>
+        <div class="row" id="ai-bar" style="gap:6px;padding:8px 10px 0;flex-wrap:wrap">
+          <button type="button" class="btn btn-ghost btn-sm" data-ai="fix" title="Corrige l'orthographe et la grammaire">✨ Corriger</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-ai="improve" title="Corrige et rend le message plus clair">Améliorer</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-ai="reply" title="L'IA lit la conversation et propose une réponse">🤖 Proposer une réponse</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="ai-undo" hidden>↩ Annuler</button>
+        </div>
         <form class="chat-form" id="adm-form"><textarea id="adm-input" rows="1" maxlength="1000" placeholder="Votre réponse…" aria-label="Réponse"></textarea><button class="btn btn-primary btn-sm" id="adm-send">Envoyer</button></form>` : `<div class="empty" style="margin:auto">Choisissez une conversation.</div>`}</div>
     </div></div>`;
   body.querySelectorAll("[data-th]").forEach((b) => b.onclick = () => adminMessages(body, reload, b.dataset.th));
@@ -1375,10 +1381,26 @@ async function adminMessages(body, reload, sel) {
   rpc("mark_read", { p_thread: current }).catch(() => {});
   const input = $("#adm-input");
   input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#adm-form").requestSubmit(); } });
+  let aiPrev = null;
+  body.querySelectorAll("[data-ai]").forEach((b) => b.onclick = async () => {
+    const kind = b.dataset.ai, txt = input.value.trim();
+    if (kind !== "reply" && !txt) return toast("Écris d'abord ton message", true);
+    busy(b, true);
+    try {
+      const { data: r, error } = await sb.functions.invoke("ai", { body: kind === "reply" ? { action: "reply", thread: current, text: txt } : { action: "fix", mode: kind, text: txt } });
+      if (error) { let m = error.message; try { m = (await error.context.json()).error || m; } catch {} throw new Error(m); }
+      if (r?.error) throw new Error(r.error);
+      aiPrev = input.value; input.value = r.text; $("#ai-undo").hidden = false;
+      input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 220) + "px"; input.focus();
+      toast(kind === "reply" ? "Réponse proposée : relis-la avant d'envoyer" : "Texte corrigé");
+    } catch (err) { toast(errMsg(err), true); }
+    busy(b, false);
+  });
+  $("#ai-undo").onclick = () => { if (aiPrev !== null) { input.value = aiPrev; aiPrev = null; } $("#ai-undo").hidden = true; input.focus(); };
   $("#adm-form").onsubmit = async (e) => {
     e.preventDefault(); const txt = input.value.trim(); if (!txt) return;
     const btn = $("#adm-send"); busy(btn, true);
-    try { await rpc("send_message", { p_body: txt, p_thread: current }); input.value = ""; box.querySelector(".empty")?.remove(); }
+    try { await rpc("send_message", { p_body: txt, p_thread: current }); input.value = ""; aiPrev = null; $("#ai-undo").hidden = true; box.querySelector(".empty")?.remove(); }
     catch (err) { toast(errMsg(err), true); }
     busy(btn, false); input.focus();
   };
