@@ -29,6 +29,12 @@ async function claude(model: string, system: string, user: string, max = 600) {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  if (req.method === "GET") {   // vérifie seulement que la clé est en place et valide (ne consomme aucun crédit)
+    const key = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!key) return json({ key: "absente" });
+    const r = await fetch("https://api.anthropic.com/v1/models?limit=1", { headers: { "x-api-key": key, "anthropic-version": "2023-06-01" } });
+    return json({ key: r.ok ? "valide" : "refusée (" + r.status + ")" });
+  }
   try {
     const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
     const { data: u } = await sb.auth.getUser(token);
