@@ -924,6 +924,7 @@ async function viewDiffuseur() {
     catch (err) { toast(errMsg(err), true); busy(b, false); }
   });
   app.querySelectorAll("[data-copy]").forEach((b) => b.onclick = () => copy(b.dataset.copy, b));
+  app.querySelectorAll("[data-wamedia]").forEach((b) => b.onclick = () => { const c = camps.find((x) => String(x.id) === b.dataset.wamedia); if (c) shareWithMedia(c.media_url, `${c.message}\n\n👉 ${TRACK_BASE + c.my_code}`, b); });
   if (state.focusCamp) {
     const id = state.focusCamp; state.focusCamp = null;
     const el = document.getElementById("camp-" + id);
@@ -1015,7 +1016,8 @@ function adCard(c, ready) {
     ${c.my_code ? `
       <div class="linkbox"><span>${esc(link)}</span></div>
       <div class="row">
-        <button class="btn btn-primary btn-sm" data-copy="${esc(text)}">Copier texte + lien</button>
+        ${c.media_url ? `<button class="btn btn-primary btn-sm" data-wamedia="${c.id}">📲 Publier image + lien</button>` : ""}
+        <button class="btn ${c.media_url ? "btn-ghost" : "btn-primary"} btn-sm" data-copy="${esc(text)}">Copier texte + lien</button>
         ${c.media_url ? `<a class="btn btn-ghost btn-sm" href="${esc(c.media_url)}" target="_blank" rel="noopener" download>Télécharger le visuel</a>` : ""}
         <a class="btn btn-ghost btn-sm" href="https://wa.me/?text=${encodeURIComponent(text)}" target="_blank" rel="noopener">Envoyer sur WhatsApp</a>
       </div>
@@ -1120,6 +1122,26 @@ async function adminCampaigns(body, reload) {
   body.querySelectorAll("[data-resume]").forEach((b) => b.onclick = () => act(b, "set_campaign_status", { p_id: b.dataset.resume, p_status: "active" }, "Campagne relancée"));
 }
 
+async function shareWithMedia(url, text, btn) {
+  const fallback = () => { window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank"); };
+  if (!url || !navigator.canShare) { toast("Ton téléphone n'accepte pas l'envoi direct de l'image : le texte part seul, ajoute le visuel à la main.", true); return fallback(); }
+  const old = btn.textContent; btn.disabled = true; btn.textContent = "Préparation…";
+  try {
+    try { await navigator.clipboard.writeText(text); } catch (e) {}
+    const r = await fetch(url, { mode: "cors" }); if (!r.ok) throw new Error("media");
+    const blob = await r.blob();
+    const type = blob.type || (/\.mp4($|\?)/i.test(url) ? "video/mp4" : "image/jpeg");
+    const ext = type.includes("mp4") ? "mp4" : type.includes("png") ? "png" : type.includes("webp") ? "webp" : "jpg";
+    const file = new File([blob], "statupub." + ext, { type });
+    if (!navigator.canShare({ files: [file] })) throw new Error("noshare");
+    toast("Choisis WhatsApp. Le texte est aussi copié : colle-le en légende s'il n'apparaît pas.");
+    await navigator.share({ files: [file], text });
+  } catch (e) {
+    if (e && e.name === "AbortError") return;
+    toast("Envoi de l'image impossible ici : le texte part seul, ajoute le visuel à la main.", true); fallback();
+  } finally { btn.disabled = false; btn.textContent = old; }
+}
+
 function announceModal(c) {
   const s = state.settings || {};
   const link = `https://statupub.com/#/diffuseur?c=${c.id}`;
@@ -1129,8 +1151,11 @@ function announceModal(c) {
     <p class="small muted">Envoie ce message dans la Chaîne StatuPub ou dans tes groupes. Le lien ouvre la campagne dans l'espace du diffuseur, qui récupère alors <b>son propre lien</b> pour que ses clics soient comptés.</p>
     <div class="ad-text" style="white-space:pre-wrap">${esc(msg)}</div>
     <div class="row">
-      <button class="btn btn-primary btn-sm" data-copy="${esc(msg)}">Copier le message</button>
-      <a class="btn btn-ghost btn-sm" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Envoyer sur WhatsApp</a>
+      ${c.media_url ? `<button class="btn btn-primary" data-wamedia>📲 Envoyer l'image + le texte sur WhatsApp</button>` : ""}
+    </div>
+    <div class="row">
+      <button class="btn ${c.media_url ? "btn-ghost" : "btn-primary"} btn-sm" data-copy="${esc(msg)}">Copier le message</button>
+      <a class="btn btn-ghost btn-sm" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Texte seul sur WhatsApp</a>
       <button class="btn btn-ghost btn-sm" data-copy="${esc(link)}">Copier le lien seul</button>
     </div>
     <div class="row">
@@ -1139,6 +1164,7 @@ function announceModal(c) {
     </div>
     <p class="small muted">⚠️ N'envoie jamais le lien du site de l'annonceur directement : ces clics ne seraient ni comptés, ni payés.</p>`, (m) => {
     m.querySelectorAll("[data-copy]").forEach((b) => b.onclick = () => copy(b.dataset.copy, b));
+    const w = m.querySelector("[data-wamedia]"); if (w) w.onclick = () => shareWithMedia(c.media_url, msg, w);
   });
 }
 
