@@ -101,6 +101,15 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .btn[disabled]{opacity:.55;cursor:not-allowed}
 label{display:flex;flex-direction:column;gap:6px;font-weight:600;font-size:.9rem}
 label .hint{font-weight:400;color:var(--muted);font-size:.8rem}
+.pw{position:relative;display:block}
+.pw input{padding-right:54px}
+.pw-eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:42px;height:42px;border:none;background:transparent;color:var(--muted);border-radius:10px;cursor:pointer;display:grid;place-items:center}
+.pw-eye:hover{color:var(--text);background:var(--bg)}
+.pw-eye:focus-visible{outline:3px solid var(--saffron);outline-offset:1px}
+.or{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:.85rem}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+.btn-google{background:var(--surface);color:var(--text);border-color:var(--line);font-weight:700}
+.btn-google svg{flex:none}
 input,select,textarea{font:inherit;font-weight:400;color:var(--text);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:.7rem .8rem;width:100%;min-width:0}
 textarea{min-height:110px;resize:vertical}
 .check{flex-direction:row;align-items:flex-start;gap:10px;font-weight:500}
@@ -242,7 +251,7 @@ main{padding-block:24px 64px}
 const SUPABASE_URL = "https://zqqtqopcrlxvsxvqmfjo.supabase.co";
 const SUPABASE_KEY = "sb_publishable_ELwnBEHmoxzb1NemI_nAig_YdEish0f";
 const TRACK_BASE = "https://statupub.com/";  // lien court -> 404.html -> traqueur de clics
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { flowType: "pkce", detectSessionInUrl: true, persistSession: true } });
 
 const state = { session: null, profile: null, settings: null };
 const $ = (s, el = document) => el.querySelector(s);
@@ -256,6 +265,24 @@ const dateFr = (d) => new Date(d).toLocaleDateString("fr-FR", { day: "numeric", 
 const dateTimeFr = (d) => new Date(d).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const PAY_FN = SUPABASE_URL + "/functions/v1/paydunya";
 function getRef() { if (state.ref) return state.ref; try { return localStorage.getItem("sp_ref") || ""; } catch { return ""; } }
+const EYE_OPEN = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_SHUT = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.9 8.4 2 12 2 12s3.5 7 10 7a9.6 9.6 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+function pwField(id, auto, ph) {
+  return `<span class="pw"><input id="${id}" type="password" autocomplete="${auto}" required minlength="6" placeholder="${ph}"><button type="button" class="pw-eye" data-eye="${id}" aria-label="Afficher le mot de passe" aria-pressed="false">${EYE_OPEN}</button></span>`;
+}
+function bindEyes(root = document) {
+  root.querySelectorAll("[data-eye]").forEach((b) => b.onclick = (e) => {
+    e.preventDefault(); const inp = document.getElementById(b.dataset.eye); const show = inp.type === "password";
+    inp.type = show ? "text" : "password"; b.innerHTML = show ? EYE_SHUT : EYE_OPEN;
+    b.setAttribute("aria-label", show ? "Masquer le mot de passe" : "Afficher le mot de passe"); b.setAttribute("aria-pressed", String(show)); inp.focus();
+  });
+}
+async function googleEnabled() {
+  if (state.google !== undefined) return state.google;
+  try { const r = await fetch(SUPABASE_URL + "/auth/v1/settings", { headers: { apikey: SUPABASE_KEY } }); state.google = !!(await r.json())?.external?.google; }
+  catch { state.google = false; }
+  return state.google;
+}
 const LEVELS = { ambassadeur: ["Ambassadeur", "p-info"], or: ["Ambassadeur Or", "p-warn"], elite: ["Ambassadeur Elite", "p-ok"] };
 const COUNTRIES = {
   SN: { name: "Sénégal", modes: ["wave-senegal", "orange-money-senegal", "free-money-senegal", "expresso-senegal"] },
@@ -401,6 +428,7 @@ async function route() {
   window.scrollTo(0, 0);
   const role = state.profile?.role;
   const guard = (r) => { if (!state.profile) { location.hash = "#/connexion"; return false; } if (role !== r) { location.hash = "#/" + role; return false; } return true; };
+  if (state.profile?.needs_onboarding) return viewOnboarding();
   try {
     if (path === "/connexion") return viewAuth("login");
     if (path === "/inscription") return viewAuth("signup", new URLSearchParams(q).get("role"));
@@ -532,17 +560,27 @@ function viewAuth(mode, roleParam) {
           <label for="f-company" id="company-wrap" ${role === "annonceur" ? "" : "hidden"}>Entreprise ou boutique<input id="f-company" placeholder="Boutique Awa Mode"></label>
         </div>
         <label for="f-email">E-mail<input id="f-email" type="email" autocomplete="email" required placeholder="vous@exemple.com"></label>
-        <label for="f-pass">Mot de passe<input id="f-pass" type="password" autocomplete="${mode === "login" ? "current-password" : "new-password"}" required minlength="6" placeholder="6 caractères minimum"></label>
+        <label for="f-pass">Mot de passe${pwField("f-pass", mode === "login" ? "current-password" : "new-password", "6 caractères minimum")}</label>
         <button class="btn btn-primary" id="auth-btn" type="submit">${mode === "login" ? "Me connecter" : "Créer mon compte"}</button>
         ${mode === "login" ? `<button type="button" class="btn btn-ghost btn-sm" id="forgot">Mot de passe oublié ?</button>` : ""}
+        <div id="google-box" hidden class="stack" style="gap:12px"><div class="or">ou</div>
+          <button type="button" class="btn btn-google" id="google-btn"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16.5 12.5H12v-2h6.6c.1.5.1 1 .1 1.5 0 3.9-2.6 6.7-6.7 6.7a6.7 6.7 0 1 1 4.6-11.6l-1.5 1.5A4.6 4.6 0 0 0 12 7.3a4.7 4.7 0 0 0 0 9.4c2.2 0 3.9-1.3 4.5-3.2z" fill="currentColor"/></svg>Continuer avec Google</button>
+          <p class="small muted" style="text-align:center">Nouveau sur StatuPub ? Tu choisiras ensuite si tu es diffuseur ou annonceur.</p></div>
       </form>
     </div></main>`;
+  bindEyes(app);
+  googleEnabled().then((on) => { const g = $("#google-box"); if (g) g.hidden = !on; });
+  $("#google-btn").onclick = async (e) => {
+    busy(e.currentTarget, true);
+    const { error } = await sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + "/" } });
+    if (error) { toast(errMsg(error), true); busy(e.currentTarget, false); }
+  };
   app.querySelectorAll(".tab").forEach((t) => t.onclick = () => location.hash = t.dataset.m === "login" ? "#/connexion" : "#/inscription?role=" + (app.querySelector("input[name=role]:checked")?.value || role));
   app.querySelectorAll("input[name=role]").forEach((r) => r.onchange = () => $("#company-wrap").hidden = r.value !== "annonceur" || !r.checked);
   $("#forgot")?.addEventListener("click", async () => {
     const email = $("#f-email").value.trim();
     if (!email) return toast("Entrez d'abord votre e-mail", true);
-    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + "/" });
     toast(error ? errMsg(error) : "E-mail de réinitialisation envoyé", !!error);
   });
   $("#auth-form").onsubmit = async (e) => {
@@ -569,6 +607,53 @@ function viewAuth(mode, roleParam) {
       location.hash = "#/" + (state.profile?.role || "");
     } catch (err) { toast(errMsg(err), true); busy(btn, false); }
   };
+}
+
+/* ==================== Fin d'inscription (compte Google) ==================== */
+function viewOnboarding() {
+  const p = state.profile, ref = getRef();
+  app.innerHTML = `<main class="wrap" style="max-width:560px"><form class="card stack" id="ob-form">
+    <div><p class="eyebrow">Bienvenue sur StatuPub 👋</p><h2 style="margin-top:6px">Termine ton inscription</h2><p class="muted small" style="margin-top:6px">Plus qu'une étape : dis-nous qui tu es.</p></div>
+    <fieldset style="border:none;padding:0;margin:0" class="stack"><legend class="eyebrow" style="margin-bottom:8px">Je suis</legend>
+      <div class="grid g2">
+        <label class="check card flat" style="padding:12px"><input type="radio" name="ob-role" id="ob-d" value="diffuseur" checked><span><b>Diffuseur</b><br><span class="muted small">Je gagne avec mon statut</span></span></label>
+        <label class="check card flat" style="padding:12px"><input type="radio" name="ob-role" id="ob-a" value="annonceur"><span><b>Annonceur</b><br><span class="muted small">Je veux faire de la pub</span></span></label>
+      </div></fieldset>
+    <label for="ob-name">Nom complet<input id="ob-name" autocomplete="name" value="${esc(p.full_name)}"></label>
+    <div class="grid g2"><label for="ob-phone">Téléphone<input id="ob-phone" type="tel" autocomplete="tel" placeholder="77 123 45 67"></label>
+      <label for="ob-city">Ville<input id="ob-city" placeholder="Ta ville"></label></div>
+    <label for="ob-country">Pays<select id="ob-country">${countryOptions("SN")}</select></label>
+    <label for="ob-company" id="ob-company-wrap" hidden>Entreprise ou boutique<input id="ob-company" placeholder="Boutique Awa Mode"></label>
+    ${ref ? `<p class="small muted">Code parrain : <b class="num">${esc(ref)}</b></p>` : ""}
+    <button class="btn btn-primary" id="ob-btn">Valider mon inscription</button>
+    <button type="button" class="btn btn-ghost btn-sm" id="ob-out">Me déconnecter</button>
+  </form></main>`;
+  app.querySelectorAll("input[name=ob-role]").forEach((r) => r.onchange = () => $("#ob-company-wrap").hidden = $("#ob-a").checked === false);
+  $("#ob-out").onclick = async () => { await sb.auth.signOut(); location.hash = "#/"; };
+  $("#ob-form").onsubmit = async (e) => {
+    e.preventDefault(); const btn = $("#ob-btn");
+    const args = { p_role: app.querySelector("input[name=ob-role]:checked").value, p_full_name: $("#ob-name").value.trim(), p_phone: $("#ob-phone").value.trim(),
+      p_city: $("#ob-city").value.trim(), p_country: $("#ob-country").value, p_company: $("#ob-company").value.trim(), p_ref: ref };
+    if (args.p_full_name.length < 2 || args.p_phone.replace(/\D/g, "").length < 7) return toast("Nom et téléphone obligatoires", true);
+    busy(btn, true);
+    try { await rpc("complete_onboarding", args); await loadProfile(); toast("Bienvenue sur StatuPub !"); location.hash = "#/" + state.profile.role; route(); }
+    catch (err) { toast(errMsg(err), true); busy(btn, false); }
+  };
+}
+
+function newPasswordModal() {
+  openModal(`<div class="row between"><h2>Nouveau mot de passe</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
+    <form id="np-form" class="stack"><label for="np-pass">Choisis un nouveau mot de passe${pwField("np-pass", "new-password", "6 caractères minimum")}</label>
+    <button class="btn btn-primary" id="np-btn">Enregistrer</button></form>`, (m) => {
+    bindEyes(m);
+    $("#np-form", m).onsubmit = async (e) => {
+      e.preventDefault(); const pw = $("#np-pass", m).value; if (pw.length < 6) return toast("6 caractères minimum", true);
+      const btn = $("#np-btn", m); busy(btn, true);
+      const { error } = await sb.auth.updateUser({ password: pw });
+      if (error) { toast(errMsg(error), true); busy(btn, false); return; }
+      closeModal(); toast("Mot de passe modifié");
+    };
+  });
 }
 
 /* ==================== ANNONCEUR ==================== */
@@ -1207,7 +1292,7 @@ async function adminMessages(body, reload, sel) {
 }
 
 /* ==================== Démarrage ==================== */
-sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_IN" || ev === "SIGNED_OUT") setTimeout(async () => { const before = state.profile?.id; await loadProfile(); if (before !== state.profile?.id) route(); }, 0); });
+sb.auth.onAuthStateChange((ev) => { if (ev === "PASSWORD_RECOVERY") setTimeout(newPasswordModal, 300); if (ev === "SIGNED_IN" || ev === "SIGNED_OUT") setTimeout(async () => { const before = state.profile?.id; await loadProfile(); if (before !== state.profile?.id) route(); }, 0); });
 window.addEventListener("hashchange", route);
 loadProfile().then(() => {
   const qs = new URLSearchParams(location.search);
