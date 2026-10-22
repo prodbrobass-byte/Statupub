@@ -232,6 +232,25 @@ main{padding-block:24px 64px}
 .thread .last{font-size:.85rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .conv{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;height:min(620px,75vh);overflow:hidden}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* Avis + vitrine ambassadeurs */
+.reviews{overflow:hidden;-webkit-mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent);mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent)}
+.reviews-track{display:flex;gap:16px;width:max-content;animation:rv-scroll var(--rv-dur,40s) linear infinite}
+.reviews:hover .reviews-track,.reviews:focus-within .reviews-track{animation-play-state:paused}
+@keyframes rv-scroll{to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion:reduce){.reviews{overflow-x:auto;-webkit-mask-image:none;mask-image:none}.reviews-track{animation:none}}
+.review{width:300px;flex:none;display:flex;flex-direction:column;gap:10px}
+.review p{margin:0;line-height:1.5}
+.stars{color:var(--saffron);letter-spacing:2px;font-size:1.05rem}
+.review .who{font-size:.85rem;color:var(--muted)}
+.ambs{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:16px}
+.amb-card{text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px;padding:20px 14px}
+.amb-card img{width:112px;height:112px;border-radius:50%;object-fit:cover;border:3px solid var(--saffron);background:var(--line)}
+.amb-card b{font-size:1rem}
+.amb-card p{margin:0;font-size:.85rem;color:var(--muted);line-height:1.45}
+.star-pick{display:flex;gap:6px}
+.star-pick button{font-size:1.9rem;line-height:1;background:none;border:none;cursor:pointer;color:var(--line);padding:4px;min-width:44px;min-height:44px}
+.star-pick button[aria-pressed="true"]{color:var(--saffron)}
 </style>
 </head>
 <body>
@@ -544,10 +563,40 @@ function viewHome() {
       </ul>
     </div>
   </div></section>
+  <div id="home-social"></div>
   <footer><div class="wrap row between"><span>StatuPub · une plateforme West Africa SN Production</span><span class="row" style="gap:14px"><a href="/gagner-argent-statut-whatsapp/">Gagner avec son statut</a><a href="/publicite-statut-whatsapp/">Pub sur les statuts WhatsApp</a><a href="/faq/">Questions fréquentes</a><a href="/confidentialite/">Confidentialité</a><a href="/conditions/">Conditions</a></span></div></footer>`;
   const v = $("#sim-views"), r = $("#sim-rate");
   const upd = () => { $("#sim-v").textContent = v.value; $("#sim-r").textContent = r.value + " %"; $("#sim-out").textContent = fcfa(v.value * r.value / 100 * pay) + " FCFA"; };
   v.oninput = r.oninput = upd; upd();
+  loadHomeSocial();
+}
+
+async function loadHomeSocial() {
+  const box = $("#home-social"); if (!box) return;
+  const roleLbl = { annonceur: "Annonceur", diffuseur: "Diffuseur" };
+  let reviews = [], ambs = [];
+  try {
+    [reviews, ambs] = await Promise.all([
+      rpc("public_reviews").catch(() => []),
+      sb.from("showcase").select("name, description, photo_url").eq("visible", true).eq("archived", false).order("sort").order("created_at").then((r) => r.data || []),
+    ]);
+  } catch { return; }
+  if (!document.body.contains(box)) return;
+  const card = (r) => `<article class="card review"><div class="stars" aria-label="${r.rating} sur 5">${"★".repeat(r.rating)}<span style="color:var(--line)">${"★".repeat(5 - r.rating)}</span></div><p>« ${esc(r.body)} »</p><div class="who"><b style="color:var(--text)">${esc(r.display_name)}</b>${r.city ? " · " + esc(r.city) : ""} · ${roleLbl[r.role] || ""}</div></article>`;
+  let html = "";
+  if (reviews.length) {
+    const list = reviews.length < 4 ? [...reviews, ...reviews, ...reviews] : reviews;
+    html += `<section class="section" style="padding-top:0" aria-labelledby="rv-h"><div class="wrap stack">
+      <div><p class="eyebrow">Ils utilisent StatuPub</p><h2 id="rv-h">Ce qu'en disent nos utilisateurs</h2></div></div>
+      <div class="reviews" style="--rv-dur:${Math.max(25, list.length * 7)}s" tabindex="0" aria-label="Avis des utilisateurs, défilement automatique"><div class="reviews-track">${list.map(card).join("")}${list.map(card).join("").replace(/<article /g, '<article aria-hidden="true" ')}</div></div></section>`;
+  }
+  if (ambs.length) {
+    html += `<section class="section" style="padding-top:0" aria-labelledby="amb-h"><div class="wrap stack">
+      <div><p class="eyebrow">L'équipe terrain</p><h2 id="amb-h">Nos ambassadeurs</h2><p class="muted">Ils font connaître StatuPub près de chez toi.</p></div>
+      <div class="ambs">${ambs.map((a) => `<div class="card amb-card"><img src="${esc(a.photo_url)}" alt="Photo de ${esc(a.name)}" loading="lazy"><b>${esc(a.name)}</b>${a.description ? `<p>${esc(a.description)}</p>` : ""}</div>`).join("")}</div>
+    </div></section>`;
+  }
+  box.innerHTML = html;
 }
 
 /* ==================== Connexion / Inscription ==================== */
@@ -728,6 +777,7 @@ async function viewAnnonceur() {
   $("#b-recharge").onclick = rechargeModal;
   $("#b-new").onclick = () => newCampaignModal(w.available);
   $("#b-new2")?.addEventListener("click", () => newCampaignModal(w.available));
+  renderReviewBox();
 }
 
 function campCard(c) {
@@ -941,6 +991,7 @@ async function viewDiffuseur() {
       if (!ready) toast("Active d'abord ton compte (étapes en haut), puis récupère ton lien."); }
     else toast("Cette campagne est terminée ou n'est plus disponible.", true);
   }
+  renderReviewBox();
 }
 
 async function renderAmbassador(box) {
@@ -1079,12 +1130,56 @@ function profileModal() {
   });
 }
 
+
+/* ==================== Avis (laisser un avis) ==================== */
+async function renderReviewBox() {
+  const main = app.querySelector("main"); const p = state.profile;
+  if (!main || !p || p.is_blocked || !["annonceur", "diffuseur"].includes(p.role)) return;
+  $("#rv-box")?.remove();
+  main.insertAdjacentHTML("beforeend", `<section id="rv-box" class="card stack" style="margin-top:24px" aria-labelledby="rv-t"></section>`);
+  const box = $("#rv-box");
+  const { data: mine } = await sb.from("reviews").select("*").eq("user_id", p.id).maybeSingle();
+  const form = (r) => {
+    let rating = r?.rating || 0;
+    box.innerHTML = `<div><h2 id="rv-t" style="font-size:1.25rem">${r ? "Modifier mon avis" : "Ton avis compte ⭐"}</h2>
+      <p class="small muted">${p.role === "annonceur" ? "Comment se passent tes campagnes sur StatuPub ?" : "Comment se passe ton expérience de diffuseur ?"} Ton avis sera affiché sur la page d'accueil après vérification.</p></div>
+      <div class="star-pick" role="group" aria-label="Note sur 5">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-star="${n}" aria-label="${n} étoile${n > 1 ? "s" : ""}" aria-pressed="${n <= rating}">★</button>`).join("")}</div>
+      <label for="rv-body">Ton avis<textarea id="rv-body" maxlength="300" rows="3" placeholder="${p.role === "annonceur" ? "Ex. : J'ai eu mes premiers clients dès le premier jour." : "Ex. : J'ai reçu mon premier retrait sur Wave en moins de 24 h."}">${esc(r?.body || "")}</textarea></label>
+      <div class="grid g2">
+        <label for="rv-name">Nom affiché<input id="rv-name" maxlength="40" value="${esc(r?.display_name || (p.role === "annonceur" && p.company ? p.company : (p.full_name || "").split(" ")[0]))}"></label>
+        <label for="rv-city">Ville<input id="rv-city" maxlength="40" value="${esc(r?.city || p.city || "")}" placeholder="Dakar, Abidjan, Lomé…"></label>
+      </div>
+      <div class="row"><button class="btn btn-primary" id="rv-send">${r ? "Mettre à jour" : "Publier mon avis"}</button>${r ? `<button class="btn btn-ghost" id="rv-cancel">Annuler</button>` : ""}</div>`;
+    const paint = () => box.querySelectorAll("[data-star]").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.star <= rating)));
+    box.querySelectorAll("[data-star]").forEach((b) => b.onclick = () => { rating = +b.dataset.star; paint(); });
+    $("#rv-cancel")?.addEventListener("click", () => done(r));
+    $("#rv-send").onclick = async (e) => {
+      const body = $("#rv-body").value.trim(), name = $("#rv-name").value.trim(), city = $("#rv-city").value.trim();
+      if (!rating) return toast("Choisis une note de 1 à 5 étoiles", true);
+      if (body.length < 10) return toast("Écris au moins une phrase (10 caractères)", true);
+      if (name.length < 2) return toast("Indique le nom à afficher", true);
+      busy(e.currentTarget, true);
+      try { await rpc("submit_review", { p_rating: rating, p_body: body, p_name: name, p_city: city }); toast("Merci ! Ton avis sera publié après vérification 🙏");
+        done({ rating, body, display_name: name, city, status: "en_attente" }); }
+      catch (err) { toast(errMsg(err), true); busy(e.currentTarget, false); }
+    };
+  };
+  const done = (r) => {
+    if (!r) return form(null);
+    const st = { en_attente: "en cours de vérification", publie: "publié sur la page d'accueil ✅", masque: "non publié" }[r.status] || "";
+    box.innerHTML = `<div class="row between" style="align-items:flex-start"><div><h2 id="rv-t" style="font-size:1.25rem">Ton avis</h2><p class="small muted" style="margin:2px 0 0">Statut : ${st}</p></div><button class="btn btn-ghost btn-sm" id="rv-edit">Modifier</button></div>
+      <div class="stars">${"★".repeat(r.rating)}<span style="color:var(--line)">${"★".repeat(5 - r.rating)}</span></div><p style="margin:0">« ${esc(r.body)} »</p>`;
+    $("#rv-edit").onclick = () => form(r);
+  };
+  done(mine);
+}
+
 /* ==================== ADMIN ==================== */
 async function viewAdmin(tab) {
   app.innerHTML = `<div class="spinner"></div>`;
   const ov = await rpc("admin_overview");
   const tabs = [["campagnes", "Campagnes", ov.campagnes_attente], ["recharges", "Recharges", ov.recharges_attente], ["retraits", "Retraits", ov.retraits_attente],
-    ["diffuseurs", "Diffuseurs"], ["ambassadeurs", "Ambassadeurs"], ["messages", "Messages", ov.messages_non_lus], ["annonceurs", "Annonceurs"], ["clics", "Clics"], ["reglages", "Réglages"]];
+    ["diffuseurs", "Diffuseurs"], ["ambassadeurs", "Ambassadeurs"], ["messages", "Messages", ov.messages_non_lus], ["annonceurs", "Annonceurs"], ["avis", "Avis", ov.avis_attente], ["vitrine", "Vitrine"], ["clics", "Clics"], ["reglages", "Réglages"]];
   const marge = ov.ca_total - ov.reverse_total - (ov.commissions_total || 0);
   app.innerHTML = `<main class="wrap">
     <div class="page-head"><div><p class="eyebrow">Administration</p><h1 style="font-size:2rem">Tableau de bord StatuPub</h1></div><button class="btn btn-ghost btn-sm" id="refresh">Actualiser</button></div>
@@ -1099,7 +1194,7 @@ async function viewAdmin(tab) {
   app.querySelectorAll("[data-t]").forEach((b) => b.onclick = () => location.hash = "#/admin?t=" + b.dataset.t);
   $("#refresh").onclick = () => viewAdmin(tab);
   const body = $("#admin-body");
-  const fn = { campagnes: adminCampaigns, recharges: adminRecharges, retraits: adminWithdrawals, diffuseurs: adminDiffuseurs, ambassadeurs: adminAmbassadors, messages: adminMessages, annonceurs: adminAnnonceurs, clics: adminClicks, reglages: adminSettings }[tab] || adminCampaigns;
+  const fn = { campagnes: adminCampaigns, recharges: adminRecharges, retraits: adminWithdrawals, diffuseurs: adminDiffuseurs, ambassadeurs: adminAmbassadors, messages: adminMessages, annonceurs: adminAnnonceurs, clics: adminClicks, avis: adminReviews, vitrine: adminShowcase, reglages: adminSettings }[tab] || adminCampaigns;
   try { await fn(body, () => viewAdmin(tab)); } catch (e) { body.innerHTML = `<div class="notice warn">${esc(errMsg(e))}</div>`; }
 }
 
@@ -1236,6 +1331,88 @@ async function adminDiffuseurs(body, reload) {
     </tbody></table></div></div>`;
   body.querySelectorAll("[data-amb]").forEach((b) => b.onclick = async () => { busy(b, true); try { const code = await rpc("admin_set_ambassador", { p_user: b.dataset.amb, p_on: true }); toast("Ambassadeur nommé · code " + code); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } });
   body.querySelectorAll("[data-u]").forEach((b) => b.onclick = async () => { busy(b, true); try { await rpc("admin_set_blocked", { p_user: b.dataset.u, p_blocked: b.dataset.b === "true" }); toast("Mis à jour"); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } });
+}
+
+async function adminReviews(body, reload) {
+  const data = await rpc("admin_reviews");
+  const st = { en_attente: ["p-warn", "À valider"], publie: ["p-ok", "Publié"], masque: ["p-bad", "Masqué"] };
+  body.innerHTML = `<div class="stack">
+    <p class="small muted">Les avis publiés défilent en bas de la page d'accueil. Publie seulement les vrais avis ; tu peux masquer un avis à tout moment.</p>
+    ${data.length ? `<div class="grid g2">${data.map((r) => `<div class="card stack">
+      <div class="row between"><div class="stars">${"★".repeat(r.rating)}<span style="color:var(--line)">${"★".repeat(5 - r.rating)}</span></div><span class="pill ${st[r.status][0]}">${st[r.status][1]}</span></div>
+      <p style="margin:0">« ${esc(r.body)} »</p>
+      <p class="small muted" style="margin:0">Affiché : <b>${esc(r.display_name)}</b>${r.city ? " · " + esc(r.city) : ""} · ${r.role === "annonceur" ? "Annonceur" : "Diffuseur"}<br>Compte : ${esc(r.email_name || "—")} · ${dateTimeFr(r.updated_at)}</p>
+      <div class="row">${r.status !== "publie" ? `<button class="btn btn-ok btn-sm" data-rv="${r.id}" data-s="publie">Publier</button>` : ""}${r.status !== "masque" ? `<button class="btn btn-ghost btn-sm" data-rv="${r.id}" data-s="masque">Masquer</button>` : ""}</div>
+    </div>`).join("")}</div>` : `<div class="empty">Aucun avis pour l'instant. Les utilisateurs peuvent en laisser un depuis leur espace.</div>`}</div>`;
+  body.querySelectorAll("[data-rv]").forEach((b) => b.onclick = async () => {
+    busy(b, true);
+    try { await rpc("admin_set_review", { p_id: b.dataset.rv, p_status: b.dataset.s }); toast(b.dataset.s === "publie" ? "Avis publié sur l'accueil" : "Avis masqué"); reload(); }
+    catch (e) { toast(errMsg(e), true); busy(b, false); }
+  });
+}
+
+async function shrinkImage(file, max = 600) {
+  const img = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ko; i.src = URL.createObjectURL(file); });
+  const side = Math.min(img.naturalWidth, img.naturalHeight), out = Math.min(max, side);
+  const c = document.createElement("canvas"); c.width = c.height = out;
+  c.getContext("2d").drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, out, out);
+  URL.revokeObjectURL(img.src);
+  return await new Promise((ok) => c.toBlob(ok, "image/jpeg", 0.86));
+}
+
+async function adminShowcase(body, reload) {
+  const { data, error } = await sb.from("showcase").select("*").eq("archived", false).order("sort").order("created_at");
+  if (error) throw error;
+  body.innerHTML = `<div class="stack">
+    <div class="row between"><p class="small muted" style="margin:0;max-width:60ch">Les fiches visibles s'affichent dans « Nos ambassadeurs », en bas de la page d'accueil. La photo est recadrée en carré automatiquement.</p>
+      <button class="btn btn-primary" id="sc-add">Ajouter un ambassadeur</button></div>
+    ${data.length ? `<div class="ambs">${data.map((a) => `<div class="card amb-card" style="${a.visible ? "" : "opacity:.55"}"><img src="${esc(a.photo_url)}" alt="Photo de ${esc(a.name)}"><b>${esc(a.name)}</b>${a.description ? `<p>${esc(a.description)}</p>` : ""}
+      <span class="small muted">Ordre ${a.sort}${a.visible ? "" : " · masqué"}</span>
+      <div class="row" style="justify-content:center"><button class="btn btn-ghost btn-sm" data-ed="${a.id}">Modifier</button><button class="btn btn-ghost btn-sm" data-rm="${a.id}">Retirer</button></div></div>`).join("")}</div>`
+      : `<div class="empty">Aucun ambassadeur dans la vitrine. Ajoute le premier avec sa photo.</div>`}</div>`;
+  $("#sc-add").onclick = () => showcaseModal(null, reload);
+  body.querySelectorAll("[data-ed]").forEach((b) => b.onclick = () => showcaseModal(data.find((a) => a.id === b.dataset.ed), reload));
+  body.querySelectorAll("[data-rm]").forEach((b) => b.onclick = async () => {
+    if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Confirmer ?"; b.classList.add("btn-bad"); return; }
+    busy(b, true);
+    try { await rpc("admin_archive_showcase", { p_id: b.dataset.rm }); toast("Retiré de la vitrine"); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); }
+  });
+}
+
+function showcaseModal(a, reload) {
+  openModal(`<div class="row between"><h2>${a ? "Modifier" : "Ajouter"} un ambassadeur</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
+    <form id="sc-form" class="stack">
+      <div class="row" style="align-items:center;gap:16px"><img id="sc-prev" src="${esc(a?.photo_url || "")}" alt="" style="width:96px;height:96px;border-radius:50%;object-fit:cover;border:3px solid var(--saffron);background:var(--line);${a ? "" : "display:none"}">
+        <label for="sc-file" style="flex:1">Photo${a ? " (laisser vide pour garder l'actuelle)" : ""}<span class="hint">Une photo nette du visage. JPG ou PNG.</span><input id="sc-file" type="file" accept="image/jpeg,image/png,image/webp"></label></div>
+      <label for="sc-name">Nom<input id="sc-name" maxlength="60" value="${esc(a?.name || "")}" placeholder="Fatou Diop"></label>
+      <label for="sc-desc">Description<span class="hint">Ville, rôle ou phrase courte. 200 caractères maximum.</span><textarea id="sc-desc" maxlength="200" rows="2" placeholder="Ambassadrice à Thiès · aide les boutiques à lancer leur pub">${esc(a?.description || "")}</textarea></label>
+      <div class="grid g2">
+        <label for="sc-sort">Ordre d'affichage<input id="sc-sort" type="number" value="${a?.sort ?? 0}" inputmode="numeric"></label>
+        <label for="sc-vis" style="flex-direction:row;align-items:center;gap:10px;margin-top:26px"><input id="sc-vis" type="checkbox" ${a ? (a.visible ? "checked" : "") : "checked"} style="width:auto"> Visible sur l'accueil</label>
+      </div>
+      <button class="btn btn-primary" id="sc-save">Enregistrer</button>
+    </form>`, (m) => {
+    $("#sc-file", m).onchange = (e) => { const f = e.target.files[0]; if (f) { const im = $("#sc-prev", m); im.src = URL.createObjectURL(f); im.style.display = ""; } };
+    $("#sc-form", m).onsubmit = async (e) => {
+      e.preventDefault(); const btn = $("#sc-save", m);
+      const name = $("#sc-name", m).value.trim(), file = $("#sc-file", m).files[0];
+      if (name.length < 2) return toast("Indique le nom", true);
+      if (!a && !file) return toast("Ajoute une photo", true);
+      busy(btn, true);
+      try {
+        let url = a?.photo_url || "";
+        if (file) {
+          const blob = await shrinkImage(file);
+          const path = `${state.session.user.id}/vitrine-${Date.now()}.jpg`;
+          const { error } = await sb.storage.from("creatives").upload(path, blob, { contentType: "image/jpeg", upsert: false });
+          if (error) throw error;
+          url = sb.storage.from("creatives").getPublicUrl(path).data.publicUrl;
+        }
+        await rpc("admin_save_showcase", { p_id: a?.id || null, p_name: name, p_description: $("#sc-desc", m).value.trim(), p_photo_url: url, p_sort: parseInt($("#sc-sort", m).value, 10) || 0, p_visible: $("#sc-vis", m).checked });
+        closeModal(); toast("Vitrine mise à jour"); reload();
+      } catch (err) { toast(errMsg(err), true); busy(btn, false); }
+    };
+  });
 }
 
 async function adminAmbassadors(body, reload) {
