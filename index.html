@@ -1189,7 +1189,7 @@ async function viewAdmin(tab) {
   app.innerHTML = `<div class="spinner"></div>`;
   const ov = await rpc("admin_overview");
   const tabs = [["campagnes", "Campagnes", ov.campagnes_attente], ["recharges", "Recharges", ov.recharges_attente], ["retraits", "Retraits", ov.retraits_attente],
-    ["diffuseurs", "Diffuseurs"], ["ambassadeurs", "Ambassadeurs"], ["messages", "Messages", ov.messages_non_lus], ["annonceurs", "Annonceurs"], ["avis", "Avis", ov.avis_attente], ["vitrine", "Vitrine"], ["clics", "Clics"], ["reglages", "Réglages"]];
+    ["diffuseurs", "Diffuseurs"], ["ambassadeurs", "Ambassadeurs"], ["messages", "Messages", ov.messages_non_lus], ["annonceurs", "Annonceurs"], ["avis", "Avis", ov.avis_attente], ["vitrine", "Vitrine"], ["emails", "E-mails"], ["clics", "Clics"], ["reglages", "Réglages"]];
   const marge = ov.ca_total - ov.reverse_total - (ov.commissions_total || 0);
   app.innerHTML = `<main class="wrap">
     <div class="page-head"><div><p class="eyebrow">Administration</p><h1 style="font-size:2rem">Tableau de bord StatuPub</h1></div><button class="btn btn-ghost btn-sm" id="refresh">Actualiser</button></div>
@@ -1204,7 +1204,7 @@ async function viewAdmin(tab) {
   app.querySelectorAll("[data-t]").forEach((b) => b.onclick = () => location.hash = "#/admin?t=" + b.dataset.t);
   $("#refresh").onclick = () => viewAdmin(tab);
   const body = $("#admin-body");
-  const fn = { campagnes: adminCampaigns, recharges: adminRecharges, retraits: adminWithdrawals, diffuseurs: adminDiffuseurs, ambassadeurs: adminAmbassadors, messages: adminMessages, annonceurs: adminAnnonceurs, clics: adminClicks, avis: adminReviews, vitrine: adminShowcase, reglages: adminSettings }[tab] || adminCampaigns;
+  const fn = { campagnes: adminCampaigns, recharges: adminRecharges, retraits: adminWithdrawals, diffuseurs: adminDiffuseurs, ambassadeurs: adminAmbassadors, messages: adminMessages, annonceurs: adminAnnonceurs, clics: adminClicks, avis: adminReviews, vitrine: adminShowcase, emails: adminEmails, reglages: adminSettings }[tab] || adminCampaigns;
   try { await fn(body, () => viewAdmin(tab)); } catch (e) { body.innerHTML = `<div class="notice warn">${esc(errMsg(e))}</div>`; }
 }
 
@@ -1423,6 +1423,70 @@ function showcaseModal(a, reload) {
       } catch (err) { toast(errMsg(err), true); busy(btn, false); }
     };
   });
+}
+
+async function mailApi(body) {
+  const { data, error } = await sb.functions.invoke("mail", { body });
+  if (error) { let m = error.message; try { m = (await error.context.json()).error || m; } catch {} throw new Error(m); }
+  if (data?.error && !data.sent) throw new Error(data.error);
+  return data;
+}
+async function adminEmails(body, reload) {
+  const { data: hist } = await sb.from("email_blasts").select("*").order("created_at", { ascending: false }).limit(20);
+  const AUD = { tous: "Tous", annonceur: "Annonceurs", diffuseur: "Diffuseurs", ambassadeur: "Ambassadeurs" };
+  let draft = {}; try { draft = JSON.parse(localStorage.getItem("sp_mail_draft") || "{}"); } catch {}
+  body.innerHTML = `<div class="grid g2" style="align-items:start">
+    <form class="card stack" id="em-form">
+      <h2 style="font-size:1.25rem">Envoyer un e-mail groupé</h2>
+      <div><span class="small" style="font-weight:600">Destinataires</span>
+        <div class="tabs" role="radiogroup" aria-label="Destinataires" style="margin-top:6px">${Object.entries(AUD).map(([k, l], i) => `<button type="button" class="tab" role="radio" aria-checked="${(draft.aud || "tous") === k}" aria-selected="${(draft.aud || "tous") === k}" data-aud="${k}">${l}</button>`).join("")}</div>
+        <p class="small muted" id="em-count" style="margin:6px 0 0">Calcul…</p></div>
+      <label for="em-subj">Objet<input id="em-subj" maxlength="120" value="${esc(draft.subj || "")}" placeholder="Nouvelles campagnes disponibles 💰"></label>
+      <label for="em-text">Message<span class="hint">Écris {prenom} pour mettre le prénom de chaque personne. Laisse une ligne vide entre les paragraphes.</span><textarea id="em-text" rows="9" maxlength="5000" placeholder="Bonjour {prenom},&#10;&#10;De nouvelles campagnes t'attendent sur StatuPub…">${esc(draft.text || "")}</textarea></label>
+      <div class="row" style="gap:6px"><button type="button" class="btn btn-ghost btn-sm" data-emai="fix">✨ Corriger</button><button type="button" class="btn btn-ghost btn-sm" data-emai="improve">Améliorer</button></div>
+      <div class="grid g2">
+        <label for="em-cta">Bouton (facultatif)<input id="em-cta" maxlength="40" value="${esc(draft.cta || "")}" placeholder="Voir les campagnes"></label>
+        <label for="em-url">Lien du bouton<input id="em-url" type="url" value="${esc(draft.url || "")}" placeholder="https://statupub.com"></label>
+      </div>
+      <div class="row"><button type="button" class="btn btn-ghost" id="em-test">M'envoyer un test</button><button class="btn btn-primary" id="em-send">Envoyer</button></div>
+      <p class="small muted" style="margin:0">Chaque personne reçoit son propre e-mail (les adresses ne sont jamais visibles des autres), avec un lien pour se désinscrire. Les comptes bloqués et désinscrits sont exclus.</p>
+    </form>
+    <div class="card stack"><h2 style="font-size:1.25rem">Historique</h2>
+      ${hist?.length ? `<div class="table"><table><thead><tr><th>Date</th><th>Objet</th><th>Pour</th><th class="n">Envoyés</th></tr></thead><tbody>${hist.map((h) => `<tr><td>${dateTimeFr(h.created_at)}</td><td>${esc(h.subject)}</td><td>${AUD[h.audience] || h.audience}</td><td class="n">${fcfa(h.sent_count)}${h.failed_count ? `<div class="small" style="color:var(--bad)">${h.failed_count} échec(s)</div>` : ""}</td></tr>`).join("")}</tbody></table></div>` : `<p class="small muted">Aucun envoi pour l'instant.</p>`}
+    </div></div>`;
+  let aud = draft.aud || "tous", count = 0;
+  const save = () => { try { localStorage.setItem("sp_mail_draft", JSON.stringify({ aud, subj: $("#em-subj").value, text: $("#em-text").value, cta: $("#em-cta").value, url: $("#em-url").value })); } catch {} };
+  const refreshCount = async () => { $("#em-count").textContent = "Calcul…"; try { count = (await mailApi({ action: "count", audience: aud })).count; $("#em-count").innerHTML = `<b>${fcfa(count)}</b> destinataire${count > 1 ? "s" : ""}`; } catch (e) { $("#em-count").textContent = errMsg(e); } };
+  body.querySelectorAll("[data-aud]").forEach((b) => b.onclick = () => { aud = b.dataset.aud; body.querySelectorAll("[data-aud]").forEach((x) => { x.setAttribute("aria-checked", String(x === b)); x.setAttribute("aria-selected", String(x === b)); }); save(); refreshCount(); });
+  ["#em-subj", "#em-text", "#em-cta", "#em-url"].forEach((id) => $(id).addEventListener("input", save));
+  refreshCount();
+  body.querySelectorAll("[data-emai]").forEach((b) => b.onclick = async () => {
+    const t = $("#em-text").value.trim(); if (!t) return toast("Écris d'abord ton message", true);
+    busy(b, true);
+    try { const { data: r, error } = await sb.functions.invoke("ai", { body: { action: "fix", mode: b.dataset.emai, text: t } });
+      if (error) { let m = error.message; try { m = (await error.context.json()).error || m; } catch {} throw new Error(m); }
+      $("#em-text").value = r.text; save(); toast("Texte corrigé"); }
+    catch (e) { toast(errMsg(e), true); }
+    busy(b, false);
+  });
+  const payload = (action) => {
+    const subject = $("#em-subj").value.trim(), text = $("#em-text").value.trim(), cta_label = $("#em-cta").value.trim(), cta_url = $("#em-url").value.trim();
+    if (subject.length < 3) { toast("Écris l'objet de l'e-mail", true); return null; }
+    if (text.length < 10) { toast("Écris le message", true); return null; }
+    if (cta_label && !/^https:\/\//.test(cta_url)) { toast("Le lien du bouton doit commencer par https://", true); return null; }
+    return { action, audience: aud, subject, text, cta_label, cta_url };
+  };
+  $("#em-test").onclick = async (e) => { const p = payload("test"); if (!p) return; busy(e.currentTarget, true);
+    try { await mailApi(p); toast("Test envoyé sur ton adresse e-mail 📬"); } catch (err) { toast(errMsg(err), true); } busy(e.currentTarget, false); };
+  $("#em-form").onsubmit = async (e) => {
+    e.preventDefault(); const p = payload("send"); if (!p) return;
+    const btn = $("#em-send");
+    if (btn.dataset.sure !== "1") { btn.dataset.sure = "1"; btn.textContent = `Confirmer l'envoi à ${fcfa(count)} personne${count > 1 ? "s" : ""}`; btn.classList.add("btn-bad"); setTimeout(() => { btn.dataset.sure = ""; btn.textContent = "Envoyer"; btn.classList.remove("btn-bad"); }, 8000); return; }
+    busy(btn, true);
+    try { const r = await mailApi(p); try { localStorage.removeItem("sp_mail_draft"); } catch {}
+      toast(`${fcfa(r.sent)} e-mail${r.sent > 1 ? "s" : ""} envoyé${r.sent > 1 ? "s" : ""} ✅${r.failed ? ` · ${r.failed} échec(s)` : ""}`, !!r.failed); reload(); }
+    catch (err) { toast(errMsg(err), true); busy(btn, false); }
+  };
 }
 
 async function adminAmbassadors(body, reload) {
@@ -1728,6 +1792,8 @@ handleAuthLinks().then(loadProfile).then(() => {
     state.ref = ref;
     history.replaceState(null, "", location.pathname + (location.hash || (state.profile ? "" : "#/inscription?role=" + (qs.get("r") === "a" ? "annonceur" : "diffuseur"))));
   }
+  const des = qs.get("desabonne");
+  if (des) { history.replaceState(null, "", location.pathname + location.hash); setTimeout(() => toast(des === "1" ? "C'est noté : tu ne recevras plus nos e-mails d'information." : "Lien de désinscription invalide.", des !== "1"), 400); }
   const lien = qs.get("lien");
   if (lien) { history.replaceState(null, "", location.pathname + location.hash);
     setTimeout(() => toast(lien === "erreur" ? "Ce lien est momentanément indisponible. Réessayez dans un instant." : "Ce lien publicitaire n'existe pas ou a expiré.", true), 400); }
