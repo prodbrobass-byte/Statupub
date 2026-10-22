@@ -251,6 +251,19 @@ main{padding-block:24px 64px}
 .star-pick{display:flex;gap:6px}
 .star-pick button{font-size:1.9rem;line-height:1;background:none;border:none;cursor:pointer;color:var(--line);padding:4px;min-width:44px;min-height:44px}
 .star-pick button[aria-pressed="true"]{color:var(--saffron)}
+
+/* Challenge */
+.ch-banner{background:var(--ink,#0E3B36);color:#F3F1EA;border-radius:20px;padding:22px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between}
+.ch-banner b.big{font-family:var(--f-display,inherit);font-size:1.5rem;color:var(--saffron)}
+.ch-count{display:flex;gap:8px}
+.ch-count div{background:rgba(243,241,234,.1);border-radius:12px;padding:8px 10px;text-align:center;min-width:56px}
+.ch-count b{display:block;font-size:1.3rem;font-variant-numeric:tabular-nums}
+.ch-count span{font-size:.7rem;opacity:.8}
+.podium{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.podium .card{text-align:center}
+.lb{width:100%;border-collapse:collapse}
+.lb td{padding:10px 8px;border-bottom:1px solid var(--line)}
+.lb tr.me td{background:rgba(232,163,61,.14);font-weight:700}
 </style>
 </head>
 <body>
@@ -471,6 +484,7 @@ async function route() {
   if (/(^|&)avis=1/.test(q || "")) state.focusReview = true;
   if (/(^|&)chat=1/.test(q || "") && state.profile) setTimeout(() => { if (canChat() && !chat.open) openChat(); }, 600);
   try {
+    if (path === "/challenge") return viewChallenge();
     if (path === "/avis") {
       if (!state.profile) { try { sessionStorage.setItem("sp_after", "#/avis"); } catch {} state.after = "#/avis"; setTimeout(() => toast("Connecte-toi pour laisser ton avis ⭐"), 300); location.hash = "#/connexion"; return; }
       if (role === "annonceur" || role === "diffuseur") { location.hash = "#/" + role + "?avis=1"; return; }
@@ -523,6 +537,7 @@ function viewHome() {
       <div class="views">Vu par <b>412</b> personnes</div>
     </div>
   </div></section>
+  <div id="home-ch"></div>
 
   <section class="section"><div class="wrap grid g2">
     <div class="card stack">
@@ -576,6 +591,7 @@ function viewHome() {
   const upd = () => { $("#sim-v").textContent = v.value; $("#sim-r").textContent = r.value + " %"; $("#sim-out").textContent = fcfa(v.value * r.value / 100 * pay) + " FCFA"; };
   v.oninput = r.oninput = upd; upd();
   loadHomeSocial();
+  loadHomeChallenge();
 }
 
 async function loadHomeSocial() {
@@ -786,6 +802,7 @@ async function viewAnnonceur() {
   $("#b-new2")?.addEventListener("click", () => newCampaignModal(w.available));
   $("#b-meta").onclick = () => metaOrderModal(w.available);
   renderMetaSection(w.available);
+  renderChallengeCard();
   renderReviewBox();
 }
 
@@ -1000,6 +1017,7 @@ async function viewDiffuseur() {
       if (!ready) toast("Active d'abord ton compte (étapes en haut), puis récupère ton lien."); }
     else toast("Cette campagne est terminée ou n'est plus disponible.", true);
   }
+  renderChallengeCard();
   renderReviewBox();
 }
 
@@ -1332,12 +1350,121 @@ async function adminMeta(body, reload) {
   });
 }
 
+
+/* ==================== Challenge parrainage ==================== */
+const chLeft = (end) => { const ms = Math.max(0, new Date(end) - Date.now()); return { d: Math.floor(ms / 864e5), h: Math.floor(ms / 36e5) % 24, m: Math.floor(ms / 6e4) % 60, done: ms === 0 }; };
+const chPhase = (c) => Date.now() < new Date(c.starts_at) ? "avant" : Date.now() >= new Date(c.ends_at) ? "fini" : "en_cours";
+const chCount = (c) => { const ph = chPhase(c), t = chLeft(ph === "avant" ? c.starts_at : c.ends_at);
+  return `<div class="ch-count" aria-label="Temps restant">${[["d", "jours"], ["h", "heures"], ["m", "min"]].map(([k, l]) => `<div><b>${t[k]}</b><span>${l}</span></div>`).join("")}</div>`; };
+const chMedal = (r) => ["🥇", "🥈", "🥉"][r - 1] || r + "e";
+async function chData() { try { if (state.profile && ["annonceur", "diffuseur"].includes(state.profile.role)) await rpc("my_ref_code"); return await rpc("challenge_board"); } catch { return null; } }
+function chInvite(code) {
+  const d = `https://statupub.com/?ref=${code}`, a = `https://statupub.com/?ref=${code}&r=a`;
+  const msgD = `💰 Ton statut WhatsApp peut te rapporter de l'argent !\n\nSur StatuPub, tu publies des pubs sur ton statut et tu gagnes à chaque clic. Retrait par Wave ou Orange Money.\n\n👉 Inscris-toi gratuitement avec mon lien :\n${d}`;
+  const msgA = `📢 Fais connaître ton business sur les statuts WhatsApp !\n\nAvec StatuPub, tu paies seulement les vrais clics, dès 2 500 F. Paiement Wave ou Orange Money.\n\n👉 Crée ton compte annonceur avec mon lien :\n${a}`;
+  return `<div class="stack" style="gap:10px">
+    <div class="linkbox"><span>${esc(d)}</span></div>
+    <div class="row"><a class="btn btn-primary btn-sm" href="https://wa.me/?text=${encodeURIComponent(msgD)}" target="_blank" rel="noopener">Inviter des diffuseurs</a>
+      <a class="btn btn-ink btn-sm" href="https://wa.me/?text=${encodeURIComponent(msgA)}" target="_blank" rel="noopener">Inviter des annonceurs</a>
+      <button class="btn btn-ghost btn-sm" data-copy="${esc(d)}">Copier mon lien</button></div></div>`;
+}
+
+async function loadHomeChallenge() {
+  const box = $("#home-ch"); if (!box) return;
+  const c = await rpc("challenge_board").catch(() => null);
+  if (!c || chPhase(c) === "fini" && Date.now() - new Date(c.ends_at) > 3 * 864e5 || !document.body.contains(box)) return;
+  const ph = chPhase(c);
+  box.innerHTML = `<section class="section" style="padding-bottom:0"><div class="wrap"><a href="#/challenge" class="ch-banner" style="text-decoration:none">
+    <div><p class="eyebrow" style="color:var(--saffron);margin:0">🏆 ${esc(c.title)}</p><b class="big">${fcfa(c.prizes[0])} F à gagner</b>
+      <p style="margin:4px 0 0;opacity:.85">${ph === "avant" ? "Début dans :" : ph === "fini" ? "Challenge terminé : découvre les gagnants" : "Invite tes amis sur StatuPub et grimpe au classement. Fin dans :"}</p></div>
+    ${ph !== "fini" ? chCount(c) : ""}<span class="btn btn-primary">${ph === "fini" ? "Voir les gagnants" : "Participer"}</span></a></div></section>`;
+}
+
+async function renderChallengeCard() {
+  const head = app.querySelector(".page-head"); if (!head) return;
+  const c = await chData(); if (!c || chPhase(c) === "fini" && Date.now() - new Date(c.ends_at) > 3 * 864e5 || !document.body.contains(head)) return;
+  $("#ch-card")?.remove();
+  const me = c.me || {}, ph = chPhase(c);
+  head.insertAdjacentHTML("afterend", `<a id="ch-card" href="#/challenge" class="ch-banner" style="text-decoration:none;margin-bottom:20px">
+    <div><p class="eyebrow" style="color:var(--saffron);margin:0">🏆 ${esc(c.title)} · ${fcfa(c.prizes[0])} F au 1er</p>
+      <b style="font-size:1.15rem">${ph === "avant" ? "Commence bientôt : prépare tes invitations !" : ph === "fini" ? "Terminé : voir les gagnants" : me.rank ? `Tu es ${chMedal(me.rank)} avec ${me.points} point${me.points > 1 ? "s" : ""}` : "Invite tes amis et gagne des points"}</b></div>
+    ${ph !== "fini" ? chCount(c) : ""}<span class="btn btn-primary btn-sm">Mon lien et le classement</span></a>`);
+}
+
+async function viewChallenge() {
+  app.innerHTML = `<div class="spinner"></div>`;
+  const c = await chData();
+  if (!c) { app.innerHTML = `<main class="wrap" style="max-width:720px"><div class="card stack"><h1 style="font-size:1.6rem">🏆 Challenge StatuPub</h1><p class="muted">Aucun challenge en cours pour le moment. Active les notifications pour être prévenu du prochain !</p><a class="btn btn-primary" href="#/" style="align-self:flex-start">Retour à l'accueil</a></div></main>`; return; }
+  const ph = chPhase(c), me = c.me, s = state.settings || {};
+  const fmt = (d) => new Date(d).toLocaleString("fr-FR", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+  app.innerHTML = `<main class="wrap stack" style="max-width:860px;gap:20px">
+    <div class="ch-banner"><div><p class="eyebrow" style="color:var(--saffron);margin:0">🏆 ${esc(c.title)}</p><h1 style="margin:4px 0;color:#F3F1EA;font-size:1.9rem">${fcfa(c.prizes.reduce((a, b) => a + b, 0))} F de prix</h1>
+      <p style="margin:0;opacity:.85">${ph === "avant" ? "Début le " + fmt(c.starts_at) : ph === "fini" ? "Terminé le " + fmt(c.ends_at) : "Fin le " + fmt(c.ends_at)}</p></div>${ph !== "fini" ? chCount(c) : ""}</div>
+    <div class="podium">${c.prizes.map((p, i) => `<div class="card"><div style="font-size:2rem">${chMedal(i + 1)}</div><b class="num" style="font-size:1.4rem">${fcfa(p)} F</b><div class="small muted">${i + 1}${i ? "e" : "er"} place</div></div>`).join("")}</div>
+    ${me ? `<section class="card stack"><h2 style="font-size:1.25rem">Ton score</h2>
+      <div class="grid g4" style="gap:10px">
+        <div><span class="small muted">Classement</span><div class="num" style="font-size:1.4rem;font-weight:700">${me.rank ? chMedal(me.rank) : "—"}</div></div>
+        <div><span class="small muted">Points</span><div class="num" style="font-size:1.4rem;font-weight:700">${me.points}</div></div>
+        <div><span class="small muted">Diffuseurs invités</span><div class="num" style="font-weight:700">${me.d_actifs} actif${me.d_actifs > 1 ? "s" : ""} / ${me.d_inscrits}</div></div>
+        <div><span class="small muted">Annonceurs invités</span><div class="num" style="font-weight:700">${me.a_actifs} actif${me.a_actifs > 1 ? "s" : ""} / ${me.a_inscrits}</div></div></div>
+      ${ph !== "fini" && me.code ? `<h3 style="margin-top:6px">Ton lien d'invitation</h3>${chInvite(me.code)}` : ""}</section>`
+      : state.profile ? "" : `<section class="card stack"><b>Pour participer, crée ton compte gratuit : tu recevras ton lien d'invitation.</b><div class="row"><a class="btn btn-primary" href="#/inscription?role=diffuseur">Créer mon compte</a><a class="btn btn-ghost" href="#/connexion">J'ai déjà un compte</a></div></section>`}
+    <section class="card stack"><h2 style="font-size:1.25rem">Comment gagner des points</h2>
+      <ul class="stack small" style="padding-left:18px;margin:0;gap:8px">
+        <li>Partage ton lien d'invitation. Chaque personne qui s'inscrit avec ton lien <b>pendant le challenge</b> devient ton filleul.</li>
+        <li><b>+${c.pts_diffuseur} point${c.pts_diffuseur > 1 ? "s" : ""}</b> par diffuseur actif : il a obtenu au moins <b>${c.min_clicks} clics valides</b> sur ses liens.</li>
+        <li><b>+${c.pts_annonceur} points</b> par annonceur actif : il a rechargé au moins <b>${fcfa(c.min_recharge)} F</b>.</li>
+        <li>Seuls les comptes réellement actifs comptent. Les faux comptes, auto-inscriptions et clics frauduleux sont détectés, retirés du classement et peuvent entraîner l'exclusion.</li>
+        <li>En cas d'égalité, celui qui a le plus d'annonceurs actifs passe devant. Les gagnants sont payés par Wave ou Orange Money sous 72 h après vérification.</li>
+      </ul></section>
+    <section class="card stack"><h2 style="font-size:1.25rem">Classement ${ph === "fini" ? "final" : "en direct"}</h2>
+      ${c.top.length ? `<table class="lb"><tbody>${c.top.map((r) => `<tr class="${me && me.rank === r.rank ? "me" : ""}"><td style="width:48px;font-size:1.1rem">${chMedal(r.rank)}</td><td>${esc(r.name)}${r.city ? `<span class="small muted"> · ${esc(r.city)}</span>` : ""}</td><td class="num" style="text-align:right;font-weight:700">${r.points} pt${r.points > 1 ? "s" : ""}</td></tr>`).join("")}</tbody></table>`
+        : `<p class="small muted" style="margin:0">Personne n'a encore de point. ${ph === "fini" ? "" : "Sois le premier !"}</p>`}
+    </section></main>`;
+  app.querySelectorAll("[data-copy]").forEach((b) => b.onclick = () => copy(b.dataset.copy, b));
+}
+
+async function adminChallenge(body, reload) {
+  const { data: list } = await sb.from("challenges").select("*").eq("archived", false).order("starts_at", { ascending: false });
+  const c = list?.[0];
+  const rows = c ? await rpc("admin_challenge_scores", { p_id: c.id }) : [];
+  const local = (d) => { const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset()); return x.toISOString().slice(0, 16); };
+  const start = c ? local(c.starts_at) : local(new Date()), days = c ? Math.round((new Date(c.ends_at) - new Date(c.starts_at)) / 864e5) : 7;
+  body.innerHTML = `<div class="grid g2" style="align-items:start">
+    <form class="card stack" id="ch-form"><h2 style="font-size:1.25rem">${c ? "Modifier le challenge" : "Lancer un challenge"}</h2>
+      <label for="ch-title">Titre<input id="ch-title" maxlength="80" value="${esc(c?.title || "Challenge Parrainage StatuPub")}"></label>
+      <div class="grid g2"><label for="ch-start">Début<input id="ch-start" type="datetime-local" value="${start}"></label><label for="ch-days">Durée (jours)<input id="ch-days" type="number" min="1" max="60" value="${days}"></label></div>
+      <label for="ch-prizes">Prix (FCFA, du 1er au dernier)<span class="hint">Séparés par des virgules</span><input id="ch-prizes" value="${(c?.prizes || [25000, 15000, 10000]).join(", ")}"></label>
+      <div class="grid g2"><label for="ch-pa">Points par annonceur actif<input id="ch-pa" type="number" min="1" value="${c?.pts_annonceur ?? 5}"></label><label for="ch-pd">Points par diffuseur actif<input id="ch-pd" type="number" min="1" value="${c?.pts_diffuseur ?? 1}"></label></div>
+      <div class="grid g2"><label for="ch-mc">Clics valides pour qu'un diffuseur soit actif<input id="ch-mc" type="number" min="1" value="${c?.min_clicks ?? 5}"></label><label for="ch-mr">Recharge min. pour qu'un annonceur soit actif (F)<input id="ch-mr" type="number" min="500" step="500" value="${c?.min_recharge ?? 2500}"></label></div>
+      <div class="row"><button class="btn btn-primary" id="ch-save">${c ? "Enregistrer" : "Lancer le challenge"}</button>${c ? `<a class="btn btn-ghost" href="#/challenge">Voir la page publique</a><button type="button" class="btn btn-ghost" id="ch-arch">Archiver</button>` : ""}</div>
+      <p class="small muted" style="margin:0">Page publique : <b>statupub.com/challenge</b>. Le bandeau apparaît sur l'accueil et dans les espaces.</p></form>
+    <div class="card stack"><h2 style="font-size:1.25rem">Classement complet</h2>
+      ${rows.length ? `<div class="table"><table><thead><tr><th>#</th><th>Participant</th><th class="n">Diff. actifs</th><th class="n">Ann. actifs</th><th class="n">Points</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${r.rk}</td><td>${esc(r.full_name)}<div class="small muted">${esc(r.phone || "")} · ${esc(r.city || "")} · ${r.role}</div></td><td class="n">${r.d_actifs}/${r.d_inscrits}</td><td class="n">${r.a_actifs}/${r.a_inscrits}</td><td class="n"><b>${r.points}</b></td></tr>`).join("")}</tbody></table></div>
+        <p class="small muted" style="margin:0">Avant de payer, vérifie les filleuls des premiers (Admin › Diffuseurs / Annonceurs) : mêmes numéros, comptes créés à la chaîne, clics suspects.</p>` : `<p class="small muted">Aucun parrainage pour l'instant.</p>`}</div></div>`;
+  $("#ch-form").onsubmit = async (e) => {
+    e.preventDefault(); const btn = $("#ch-save");
+    const st = new Date($("#ch-start").value), d = parseInt($("#ch-days").value, 10) || 7;
+    const prizes = $("#ch-prizes").value.split(/[,;\s]+/).map((x) => parseInt(x, 10)).filter((x) => x > 0);
+    if (isNaN(st)) return toast("Date de début invalide", true);
+    if (!prizes.length) return toast("Indique au moins un prix", true);
+    busy(btn, true);
+    try { await rpc("admin_save_challenge", { p_id: c?.id || null, p_title: $("#ch-title").value.trim() || "Challenge StatuPub", p_starts: st.toISOString(), p_ends: new Date(st.getTime() + d * 864e5).toISOString(),
+      p_prizes: prizes, p_pts_a: +$("#ch-pa").value || 5, p_pts_d: +$("#ch-pd").value || 1, p_min_clicks: +$("#ch-mc").value || 5, p_min_recharge: +$("#ch-mr").value || 2500 });
+      toast(c ? "Challenge mis à jour" : "Challenge lancé 🏆"); reload(); }
+    catch (err) { toast(errMsg(err), true); busy(btn, false); }
+  };
+  $("#ch-arch")?.addEventListener("click", async (e) => { const b = e.currentTarget;
+    if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Confirmer l'archivage ?"; return; }
+    busy(b, true); try { await rpc("admin_archive_challenge", { p_id: c.id }); toast("Challenge archivé"); reload(); } catch (err) { toast(errMsg(err), true); busy(b, false); } });
+}
+
 /* ==================== ADMIN ==================== */
 async function viewAdmin(tab) {
   app.innerHTML = `<div class="spinner"></div>`;
   const ov = await rpc("admin_overview");
   const tabs = [["campagnes", "Campagnes", ov.campagnes_attente], ["recharges", "Recharges", ov.recharges_attente], ["retraits", "Retraits", ov.retraits_attente],
-    ["diffuseurs", "Diffuseurs"], ["ambassadeurs", "Ambassadeurs"], ["messages", "Messages", ov.messages_non_lus], ["annonceurs", "Annonceurs"], ["meta", "Facebook", ov.meta_attente], ["avis", "Avis", ov.avis_attente], ["vitrine", "Vitrine"], ["emails", "E-mails"], ["clics", "Clics"], ["reglages", "Réglages"]];
+    ["diffuseurs", "Diffuseurs"], ["ambassadeurs", "Ambassadeurs"], ["messages", "Messages", ov.messages_non_lus], ["annonceurs", "Annonceurs"], ["challenge", "Challenge"], ["meta", "Facebook", ov.meta_attente], ["avis", "Avis", ov.avis_attente], ["vitrine", "Vitrine"], ["emails", "E-mails"], ["clics", "Clics"], ["reglages", "Réglages"]];
   const marge = ov.ca_total - ov.reverse_total - (ov.commissions_total || 0);
   app.innerHTML = `<main class="wrap">
     <div class="page-head"><div><p class="eyebrow">Administration</p><h1 style="font-size:2rem">Tableau de bord StatuPub</h1></div><button class="btn btn-ghost btn-sm" id="refresh">Actualiser</button></div>
@@ -1352,7 +1479,7 @@ async function viewAdmin(tab) {
   app.querySelectorAll("[data-t]").forEach((b) => b.onclick = () => location.hash = "#/admin?t=" + b.dataset.t);
   $("#refresh").onclick = () => viewAdmin(tab);
   const body = $("#admin-body");
-  const fn = { campagnes: adminCampaigns, recharges: adminRecharges, retraits: adminWithdrawals, diffuseurs: adminDiffuseurs, ambassadeurs: adminAmbassadors, messages: adminMessages, annonceurs: adminAnnonceurs, clics: adminClicks, meta: adminMeta, avis: adminReviews, vitrine: adminShowcase, emails: adminEmails, reglages: adminSettings }[tab] || adminCampaigns;
+  const fn = { campagnes: adminCampaigns, recharges: adminRecharges, retraits: adminWithdrawals, diffuseurs: adminDiffuseurs, ambassadeurs: adminAmbassadors, messages: adminMessages, annonceurs: adminAnnonceurs, clics: adminClicks, challenge: adminChallenge, meta: adminMeta, avis: adminReviews, vitrine: adminShowcase, emails: adminEmails, reglages: adminSettings }[tab] || adminCampaigns;
   try { await fn(body, () => viewAdmin(tab)); } catch (e) { body.innerHTML = `<div class="notice warn">${esc(errMsg(e))}</div>`; }
 }
 
