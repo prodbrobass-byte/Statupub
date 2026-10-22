@@ -1444,7 +1444,10 @@ async function enablePush(btn) {
     <ol class="steps small"><li><div><b>Installe StatuPub</b><p class="muted">Dans Safari : bouton Partager → « Sur l'écran d'accueil » → « Ajouter ».</p></div></li>
     <li><div><b>Ouvre StatuPub depuis l'icône</b><p class="muted">Connecte-toi, puis appuie sur 🔔 en haut.</p></div></li></ol>
     <button class="btn btn-primary" id="ios-inst">Voir comment installer</button>`, (m) => { $("#ios-inst", m).onclick = () => { closeModal(); installApp(); }; });
-  if (st === "unsupported") return toast("Ce navigateur ne gère pas les notifications. Essaie avec Chrome sur Android.", true);
+  if (st === "unsupported") return openModal(`<div class="row between"><h2>Activer les notifications</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
+    <p class="small">Ce navigateur ne permet pas les notifications. C'est souvent le cas quand le site est ouvert <b>depuis WhatsApp, Facebook ou Instagram</b>.</p>
+    <ol class="steps small"><li><div><b>Ouvre statupub.com dans Chrome</b><p class="muted">Sur Android : menu ⋮ → « Ouvrir dans Chrome ». Sur iPhone : Safari, puis installe l'app sur l'écran d'accueil.</p></div></li>
+    <li><div><b>Connecte-toi et appuie sur 🔔</b><p class="muted">Puis « Autoriser ».</p></div></li></ol>`);
   if (st === "denied") return openModal(`<div class="row between"><h2>Notifications bloquées</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
     <p class="small">Tu as bloqué les notifications pour StatuPub. Pour les réactiver :</p>
     <ol class="steps small"><li><div><b>Appuie sur le cadenas 🔒</b><p class="muted">À gauche de l'adresse statupub.com (ou Paramètres du téléphone → Applications → StatuPub).</p></div></li>
@@ -1467,11 +1470,11 @@ function renderPushBtn() {
   $("#push-btn")?.remove();
   const nav = $("#nav"); if (!nav || !state.profile) return;
   const st = pushState();
-  if (st === "granted" || st === "unsupported") { $("#push-ask")?.remove(); return; }
+  if (st === "granted") { $("#push-ask")?.remove(); return; }
   nav.insertAdjacentHTML("afterbegin", `<button class="btn btn-ghost btn-sm" id="push-btn" aria-label="Activer les notifications" title="Activer les notifications">🔔</button>`);
   $("#push-btn").onclick = (e) => enablePush(e.currentTarget);
   let asked = null; try { asked = localStorage.getItem("sp_push_ask"); } catch {}
-  if (!asked && st === "off" && !$("#push-ask")) {
+  if (!asked && st !== "denied" && !$("#push-ask")) {
     const who = { annonceur: "quand ta campagne est validée, ton solde crédité ou qu'on te répond", diffuseur: "dès qu'une nouvelle campagne paie, et quand ton retrait est envoyé", admin: "à chaque campagne à valider, retrait ou message" }[state.profile.role] || "des nouveautés";
     document.body.insertAdjacentHTML("beforeend", `<div class="card" id="push-ask" role="dialog" aria-label="Activer les notifications" style="position:fixed;left:12px;right:12px;bottom:12px;z-index:60;max-width:440px;margin:0 auto;box-shadow:0 10px 30px rgba(0,0,0,.18)">
       <div class="row" style="flex-wrap:nowrap;align-items:flex-start;gap:12px"><div style="font-size:28px;line-height:1">🔔</div><div><b>Active les notifications</b><p class="small muted" style="margin:4px 0 10px">Sois prévenu sur ton téléphone ${who}, même quand StatuPub est fermé.</p>
