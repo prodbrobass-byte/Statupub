@@ -1572,7 +1572,31 @@ async function adminRequests(body, reload, table, fn, who, labelOk) {
     <h2 style="margin-top:12px">Historique</h2>
     <div class="table"><table>${head}<tbody>${data.filter((r) => !isPend(r) && !(r.method === "paydunya" && r.status === "en_attente")).map((r) => row(r, false)).join("") || `<tr><td colspan="6" class="muted">Aucun historique.</td></tr>`}</tbody></table></div></div>`;
   const act = async (b, approve) => { busy(b, true); try { await rpc(fn, { p_id: b.dataset.ok || b.dataset.no, p_approve: approve }); toast(approve ? "Validé" : "Refusé"); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } };
-  body.querySelectorAll("[data-ok]").forEach((b) => b.onclick = () => act(b, true));
+  const checks = {};
+  const LV = { vert: ["🟢", "Aucun signe de fraude"], orange: ["🟠", "À vérifier"], rouge: ["🔴", "Risque élevé : ne paie pas sans vérifier"] };
+  body.querySelectorAll("[data-chk]").forEach(async (b) => {
+    try { const c = await rpc("admin_withdrawal_check", { p_id: b.dataset.chk }); checks[b.dataset.chk] = c; b.textContent = `${LV[c.niveau][0]} Contrôle`; }
+    catch { b.textContent = "🔍 Contrôle"; }
+    b.onclick = async () => {
+      const c = checks[b.dataset.chk] || await rpc("admin_withdrawal_check", { p_id: b.dataset.chk }).catch((e) => { toast(errMsg(e), true); return null; }); if (!c) return;
+      const reasons = { doublon: "déjà cliqué", meme_appareil: "même appareil", meme_visiteur: "même visiteur sur plusieurs pubs", limite_ip: "même connexion", plafond_journalier: "plafond du jour", campagne_inactive: "campagne terminée", robot: "robot", diffuseur_bloque: "compte bloqué", budget_epuise: "budget épuisé" };
+      openModal(`<div class="row between"><h2>Contrôle du retrait</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
+        <div class="notice ${c.niveau === "vert" ? "ok" : "warn"}"><span style="font-size:1.05rem"><b>${LV[c.niveau][0]} ${LV[c.niveau][1]}</b></span></div>
+        ${c.alertes.length ? `<ul class="small" style="margin:0;padding-left:18px">${c.alertes.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}
+        <div class="grid g2 small" style="gap:10px">
+          <div><span class="muted">Diffuseur</span><div><b>${esc(c.nom)}</b> · ${esc(c.tel_profil || "")}<br>${esc(c.ville || "")} · inscrit le ${dateTimeFr(c.inscrit_le)}</div></div>
+          <div><span class="muted">Argent</span><div>Demande : <b>${fcfa(c.montant)} F</b><br>Gains totaux : <b>${fcfa(c.gains_totaux)} F</b> · Retraits : <b>${fcfa(c.retraits_totaux)} F</b></div></div>
+          <div><span class="muted">Clics</span><div><b>${c.clics_valides}</b> valides · ${c.clics_bloques} bloqués<br>${c.visiteurs} visiteurs différents · ${c.connexions} connexions</div></div>
+          <div><span class="muted">Même visiteur</span><div>Au maximum <b>${c.max_meme_visiteur}</b> clic(s) valides d'une même personne</div></div>
+        </div>
+        ${Object.keys(c.raisons_blocage).length ? `<p class="small" style="margin:0"><span class="muted">Clics bloqués :</span> ${Object.entries(c.raisons_blocage).map(([k, n]) => `${reasons[k] || k} (${n})`).join(", ")}</p>` : ""}
+        ${c.meme_telephone.length ? `<p class="small" style="margin:0"><span class="muted">Autres comptes avec ce téléphone :</span> ${c.meme_telephone.map((x) => `${esc(x.nom)} (${x.role}${x.bloque ? ", bloqué" : ""})`).join(", ")}</p>` : ""}
+        ${c.meme_numero_paiement.length ? `<p class="small" style="margin:0;color:var(--bad)"><b>Numéro de paiement déjà utilisé par :</b> ${c.meme_numero_paiement.map(esc).join(", ")}</p>` : ""}
+        <p class="small muted" style="margin:0">Le montant demandé ne peut jamais dépasser les gains vérifiés : c'est bloqué automatiquement. Ce contrôle t'aide à repérer les fraudes au niveau des clics.</p>`);
+    };
+  });
+  const guard = (b, fn) => { const c = checks[b.dataset.ok || b.dataset.pd]; if (c?.niveau === "rouge" && b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "🔴 Payer quand même ?"; toast("Ce retrait présente un risque élevé : ouvre le contrôle avant de payer", true); return; } fn(); };
+  body.querySelectorAll("[data-ok]").forEach((b) => b.onclick = () => guard(b, () => act(b, true)));
   body.querySelectorAll("[data-no]").forEach((b) => b.onclick = () => act(b, false));
 }
 const adminRecharges = (b, r) => adminRequests(b, r, "recharges", "admin_process_recharge", "Annonceur", "Valider");
@@ -1582,7 +1606,7 @@ async function adminWithdrawals(body, reload) {
   if (error) throw error;
   const pend = data.filter((r) => r.status === "en_attente"), running = data.filter((r) => r.status === "en_cours");
   const who = (r) => `${esc(r.profiles?.full_name)}<div class="small muted">${esc((COUNTRIES[r.profiles?.country] || {}).name || "")}</div>`;
-  const row = (r, act) => `<tr><td>${dateTimeFr(r.created_at)}</td><td>${who(r)}</td><td>${METHODS[r.method] || esc(r.method)}</td><td class="num">${esc(r.phone)}</td><td class="n">${fcfa(r.amount)}</td><td>${act
+  const row = (r, act) => `<tr><td>${dateTimeFr(r.created_at)}</td><td>${who(r)}${act ? `<button type="button" class="btn btn-ghost btn-sm" data-chk="${r.id}" style="margin-top:6px">🔍 Contrôle…</button>` : ""}</td><td>${METHODS[r.method] || esc(r.method)}</td><td class="num">${esc(r.phone)}</td><td class="n">${fcfa(r.amount)}</td><td>${act
     ? `<div class="row" style="flex-wrap:nowrap">${pay.configured ? `<button class="btn btn-primary btn-sm" data-pd="${r.id}">Payer via PayDunya</button>` : ""}<button class="btn btn-ghost btn-sm" data-ok="${r.id}">Payé à la main</button><button class="btn btn-bad btn-sm" data-no="${r.id}">Refuser</button></div>${r.admin_note ? `<div class="small muted">${esc(r.admin_note)}</div>` : ""}`
     : `${pill(r.status)}${r.admin_note ? `<div class="small muted">${esc(r.admin_note)}</div>` : ""}`}</td></tr>`;
   const head = `<thead><tr><th>Date</th><th>Diffuseur</th><th>Moyen</th><th>Numéro</th><th class="n">Montant</th><th></th></tr></thead>`;
@@ -1597,11 +1621,11 @@ async function adminWithdrawals(body, reload) {
   const act = async (b, approve) => { busy(b, true); try { await rpc("admin_process_withdrawal", { p_id: b.dataset.ok || b.dataset.no, p_approve: approve }); toast(approve ? "Marqué payé" : "Refusé"); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } };
   body.querySelectorAll("[data-ok]").forEach((b) => b.onclick = () => act(b, true));
   body.querySelectorAll("[data-no]").forEach((b) => b.onclick = () => act(b, false));
-  body.querySelectorAll("[data-pd]").forEach((b) => b.onclick = async () => {
+  body.querySelectorAll("[data-pd]").forEach((b) => b.onclick = () => guard(b, async () => {
     busy(b, true);
     try { const d = await payApi("payout", { withdrawal_id: b.dataset.pd }); toast(d.status === "success" ? "Paiement envoyé" : "Paiement en cours chez l'opérateur"); reload(); }
     catch (e) { toast(errMsg(e), true); reload(); }
-  });
+  }));
   $("#pd-sync")?.addEventListener("click", async (e) => { busy(e.currentTarget, true); try { await payApi("sync"); toast("Statuts mis à jour"); } catch (err) { toast(errMsg(err), true); } reload(); });
 }
 
