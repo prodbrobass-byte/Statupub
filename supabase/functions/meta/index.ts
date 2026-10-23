@@ -188,6 +188,18 @@ async function dryrunVideo(url: string) {
   return { steps };
 }
 
+// Diagnostic (protégé par x-push-hook) : état réel chez Meta d'une campagne et de ses pubs
+async function inspect(campaignId: string) {
+  const f = "name,status,effective_status,configured_status,issues_info,ad_review_feedback,recommendations";
+  const [camp, adsets, ads] = await Promise.all([
+    g(campaignId, { fields: "name,status,effective_status,issues_info" }).catch((e) => ({ err: e.message })),
+    g(`${campaignId}/adsets`, { fields: "name,status,effective_status,issues_info,lifetime_budget,start_time,end_time" }).catch((e) => ({ err: e.message })),
+    g(`${campaignId}/ads`, { fields: f }).catch((e) => ({ err: e.message })),
+  ]);
+  const acc = await g(AD, { fields: "account_status,disable_reason,funding_source_details,spend_cap,amount_spent,balance" }).catch((e) => ({ err: e.message }));
+  return { acc, camp, adsets, ads };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST uniquement" }, 405);
@@ -198,6 +210,7 @@ Deno.serve(async (req) => {
     if (hook) {
       const { data: cfg } = await sb.rpc("push_config");
       if (hook !== cfg?.hook) return json({ error: "forbidden" }, 403);
+      if (body.action === "inspect") return json(await inspect(body.campaign_id));
       if (body.action === "dryrun_video") return json(await dryrunVideo(body.url || "https://statupub.com/media/statupub-presentation.mp4"));
       return json(await sync());
     }
