@@ -1250,7 +1250,7 @@ function metaOrderModal(available, internal = false) {
         ${Object.entries(META_OBJ).map(([k, l], i) => `<label style="flex-direction:row;align-items:center;gap:10px;font-weight:500"><input type="radio" name="mo-obj" value="${k}" ${i === 0 ? "checked" : ""} style="width:auto">${l}${k === "whatsapp" ? ` <span class="small muted">(recommandé : les clients t'écrivent directement)</span>` : ""}</label>`).join("")}</fieldset>
       <label for="mo-link"><span id="mo-link-l">Ton numéro WhatsApp</span><span class="hint" id="mo-link-h">Avec l'indicatif, ex. : 221771234567</span><input id="mo-link" inputmode="tel" placeholder="221771234567"></label>
       <label for="mo-msg">Texte de la pub<span class="hint">Court et clair : l'offre, le prix, ce qu'il faut faire.</span><textarea id="mo-msg" maxlength="1000" rows="4" placeholder="🐑 -20 % sur tous les boubous jusqu'à dimanche ! Livraison gratuite à Dakar. Écris-nous sur WhatsApp 👇"></textarea></label>
-      <label for="mo-file">Visuels (1 à 3 images)<span class="hint">Carré 1080 × 1080 conseillé. Avec 2 ou 3 visuels, Meta montre davantage celui qui marche le mieux. JPG ou PNG (ou une vidéo MP4), 16 Mo maximum chacun.</span><input id="mo-file" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4"></label>
+      <label for="mo-file">Visuels : images ou vidéos (1 à 3)<span class="hint">🎬 La vidéo marche le mieux : courte (6 à 30 s), verticale ou carrée, le produit dès la 1re seconde. Tu peux mélanger images et vidéos : Meta montre davantage celle qui marche. Images JPG/PNG 16 Mo max, vidéos MP4 ou MOV 50 Mo max.</span><input id="mo-file" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"></label>
       <fieldset style="border:none;padding:0;margin:0"><legend class="small" style="font-weight:600;margin-bottom:6px">Pays visés</legend>
         <div class="row" style="gap:6px">${Object.entries(META_COUNTRIES).map(([k, n]) => `<label style="flex-direction:row;align-items:center;gap:6px;font-weight:500;border:1px solid var(--line);border-radius:999px;padding:6px 12px"><input type="checkbox" name="mo-c" value="${k}" ${k === (state.profile.country || "SN") ? "checked" : ""} style="width:auto">${n}</label>`).join("")}</div></fieldset>
       <label for="mo-cities">Villes (facultatif)<span class="hint">Laisse vide pour tout le pays. Ex. : Dakar, Thiès</span><input id="mo-cities" maxlength="200"></label>
@@ -1289,7 +1289,7 @@ function metaOrderModal(available, internal = false) {
       if (msg.length < 5) return toast("Écris le texte de ta pub", true);
       if (!file) return toast("Ajoute un visuel (image ou vidéo)", true);
       if ($("#mo-file", m).files.length > 3) return toast("3 visuels maximum", true);
-      if (files.some((f) => f.size > 16 * 1024 * 1024)) return toast("Visuel trop lourd (16 Mo maximum)", true);
+      if (files.some((f) => f.size > (/^video\//.test(f.type) ? 50 : 16) * 1024 * 1024)) return toast("Fichier trop lourd : 16 Mo max pour une image, 50 Mo pour une vidéo", true);
       if (!countries.length) return toast("Choisis au moins un pays", true);
       if (!(budget >= minB)) return toast(`Budget minimum : ${fcfa(minB)} F`, true);
       if (budget > available) return toast("Solde insuffisant : recharge ton compte", true);
@@ -1325,7 +1325,7 @@ async function adminMeta(body, reload) {
       <div><b>Durée :</b> ${o.days} j · <b>Budget pub Meta :</b> ${fcfa(o.ad_budget)} F (≈ ${fcfa(o.ad_budget / o.days)} F/jour) · <b>Ta commission :</b> ${fcfa(o.commission)} F</div>
     </div>
     <div class="ad-text" style="white-space:pre-wrap">${esc(o.message)}</div>
-    <div class="row" style="gap:10px">${(o.media_urls?.length ? o.media_urls : [o.media_url]).filter(Boolean).map((u) => /\.mp4($|\?)/i.test(u) ? `<video src="${esc(u)}" controls playsinline style="max-width:100%;max-height:260px;border-radius:12px"></video>` : `<img src="${esc(u)}" alt="Visuel" style="max-width:${o.media_urls?.length > 1 ? "31%" : "100%"};max-height:260px;border-radius:12px;object-fit:contain">`).join("")}</div>
+    <div class="row" style="gap:10px">${(o.media_urls?.length ? o.media_urls : [o.media_url]).filter(Boolean).map((u) => /\.(mp4|mov|webm|m4v)($|\?)/i.test(u) ? `<video src="${esc(u)}" controls playsinline style="max-width:100%;max-height:260px;border-radius:12px"></video>` : `<img src="${esc(u)}" alt="Visuel" style="max-width:${o.media_urls?.length > 1 ? "31%" : "100%"};max-height:260px;border-radius:12px;object-fit:contain">`).join("")}</div>
     <div class="row"><button class="btn btn-ghost btn-sm" data-copy="${esc(o.message)}">Copier le texte</button>${o.media_url ? `<a class="btn btn-ghost btn-sm" href="${esc(o.media_url)}" target="_blank" rel="noopener" download>Télécharger le visuel</a>` : ""}</div>`;
   body.innerHTML = `<div class="stack">
     <div class="grid g3"><div class="card kpi"><span class="eyebrow">À lancer</span><span class="num">${pend.length}</span></div><div class="card kpi"><span class="eyebrow">En diffusion</span><span class="num">${live.length}</span></div><div class="card kpi wallet"><span class="eyebrow">Tes commissions</span><span class="big">${fcfa(com)}</span><span class="small muted">FCFA sur les pubs lancées</span></div></div>

@@ -48,22 +48,44 @@ async function launch(id: string) {
   if (o.status !== "en_attente") throw new Error("Cette pub n'est plus en attente");
   const medias: string[] = (o.media_urls?.length ? o.media_urls : [o.media_url]).filter(Boolean).slice(0, 3);
   if (!medias.length) throw new Error("Pas de visuel");
-  if (medias.some((u) => /\.(mp4|mov|webm)($|\?)/i.test(u))) throw new Error("Vidéo : le lancement automatique gère seulement les images pour l'instant. Lance celle-ci à la main dans le Gestionnaire de publicités.");
+
 
   const eurCents = Math.floor((o.ad_budget / XOF_PER_EUR) * 100);
   if (eurCents < o.days * 100) throw new Error(`Budget trop faible pour Meta : au moins 1 € (≈ 656 F) par jour de diffusion. Ici ${(eurCents / 100).toFixed(2)} € pour ${o.days} jours.`);
 
-  // 1. Visuels
-  const hashes: string[] = [];
-  for (const u of medias) {
-    const img = await fetch(u);
-    if (!img.ok) throw new Error("Visuel introuvable");
-    const buf = new Uint8Array(await img.arrayBuffer());
-    let bin = ""; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
-    const up = await g(`${AD}/adimages`, { bytes: btoa(bin) }, "POST");
-    const h = (Object.values(up.images || {})[0] as any)?.hash;
-    if (!h) throw new Error("Envoi du visuel à Meta impossible");
-    hashes.push(h);
+  // 1. Visuels : images → hash ; vidéos → envoi chez Meta + attente du traitement + miniature
+  const prev = (o.meta_ids || {}) as Record<string, string>;
+  const assets: { kind: "image" | "video"; hash?: string; video?: string; thumb?: string }[] = [];
+  for (const [i, u] of medias.entries()) {
+    if (/\.(mp4|mov|webm|m4v)($|\?)/i.test(u)) {
+      let vid = prev[`video${i}`];
+      if (!vid) {
+        vid = (await g(`${AD}/advideos`, { file_url: u, name: `SP · ${o.title} · V${i + 1}` }, "POST")).id;
+        await sb.from("meta_orders").update({ meta_ids: { ...prev, [`video${i}`]: vid } }).eq("id", id);
+        prev[`video${i}`] = vid;
+      }
+      let ready = false;
+      for (let t = 0; t < 18 && !ready; t++) {
+        const st = await g(vid, { fields: "status" }).catch(() => null);
+        const vs = st?.status?.video_status;
+        if (vs === "ready") ready = true;
+        else if (vs === "error") throw new Error("Meta n'a pas pu traiter la vidéo (format ou fichier abîmé). Demande une autre vidéo MP4.");
+        else await new Promise((r) => setTimeout(r, 5000));
+      }
+      if (!ready) throw new Error("La vidéo est encore en traitement chez Meta. Réessaie « Lancer automatiquement » dans 2 minutes (elle ne sera pas renvoyée).");
+      const th = await g(`${vid}/thumbnails`, {}).catch(() => null);
+      const thumb = (th?.data || []).find((x: any) => x.is_preferred)?.uri || th?.data?.[0]?.uri || "https://statupub.com/logo/statupub-icone-1024.png";
+      assets.push({ kind: "video", video: vid, thumb });
+    } else {
+      const img = await fetch(u);
+      if (!img.ok) throw new Error("Visuel introuvable");
+      const buf = new Uint8Array(await img.arrayBuffer());
+      let bin = ""; for (let k = 0; k < buf.length; k += 0x8000) bin += String.fromCharCode(...buf.subarray(k, k + 0x8000));
+      const up = await g(`${AD}/adimages`, { bytes: btoa(bin) }, "POST");
+      const h = (Object.values(up.images || {})[0] as any)?.hash;
+      if (!h) throw new Error("Envoi du visuel à Meta impossible");
+      assets.push({ kind: "image", hash: h });
+    }
   }
 
   const ids: Record<string, string> = {};
@@ -84,16 +106,19 @@ async function launch(id: string) {
     ids.adset = adset.id;
     // 4-5. Un visuel = une pub (même budget partagé : Meta privilégie la meilleure)
     const cta = o.objective === "site" ? "SHOP_NOW" : "LEARN_MORE";
-    for (const [i, hash] of hashes.entries()) {
-      const label = hashes.length > 1 ? `${name} · V${i + 1}` : name;
-      const creative = await g(`${AD}/adcreatives`, { name: label, object_story_spec: { page_id: PAGE, link_data: { image_hash: hash, link: o.target_url, message: o.message, name: o.title, call_to_action: { type: cta, value: { link: o.target_url } } } } }, "POST");
+    for (const [i, as] of assets.entries()) {
+      const label = assets.length > 1 ? `${name} · V${i + 1}` : name;
+      const spec = as.kind === "video"
+        ? { page_id: PAGE, video_data: { video_id: as.video, image_url: as.thumb, message: o.message, title: o.title, call_to_action: { type: cta, value: { link: o.target_url } } } }
+        : { page_id: PAGE, link_data: { image_hash: as.hash, link: o.target_url, message: o.message, name: o.title, call_to_action: { type: cta, value: { link: o.target_url } } } };
+      const creative = await g(`${AD}/adcreatives`, { name: label, object_story_spec: spec }, "POST");
       const ad = await g(`${AD}/ads`, { name: label, adset_id: adset.id, creative: { creative_id: creative.id }, status: "ACTIVE" }, "POST");
       if (i === 0) { ids.creative = creative.id; ids.ad = ad.id; }
       ids[`ad${i + 1}`] = ad.id;
     }
     await g(adset.id, { status: "ACTIVE" }, "POST");
     await g(camp.id, { status: "ACTIVE" }, "POST");
-    await sb.from("meta_orders").update({ status: "en_cours", started_at: new Date().toISOString(), ends_at: end.toISOString(), meta_campaign_id: camp.id, meta_ids: ids, last_error: null }).eq("id", id);
+    await sb.from("meta_orders").update({ status: "en_cours", started_at: new Date().toISOString(), ends_at: end.toISOString(), meta_campaign_id: camp.id, meta_ids: { ...prev, ...ids }, last_error: null }).eq("id", id);
     await notify(o.annonceur_id, "📘 Ta Facebook Ads est lancée", `${o.title} : elle passe en vérification chez Meta puis démarre (en général sous quelques heures).`);
     return { ok: true, ids };
   } catch (e) {
@@ -141,6 +166,28 @@ async function stop(id: string) {
   return { ok: true, results: res };
 }
 
+// Diagnostic (protégé par x-push-hook) : vérifie qu'une vidéo passe chez Meta, sans rien diffuser.
+async function dryrunVideo(url: string) {
+  const steps: string[] = []; let campId = "";
+  try {
+    const vid = (await g(`${AD}/advideos`, { file_url: url, name: "TEST video" }, "POST")).id; steps.push("video envoyée " + vid);
+    let ready = false;
+    for (let t = 0; t < 20 && !ready; t++) { const st = await g(vid, { fields: "status" }).catch(() => null); const vs = st?.status?.video_status; steps.push("statut " + vs); if (vs === "ready") ready = true; else if (vs === "error") break; else await new Promise((r) => setTimeout(r, 5000)); }
+    const th = await g(`${vid}/thumbnails`, {}).catch(() => null);
+    const thumb = (th?.data || []).find((x: any) => x.is_preferred)?.uri || th?.data?.[0]?.uri || "https://statupub.com/logo/statupub-icone-1024.png";
+    steps.push("miniature " + (th?.data?.length ? "ok" : "défaut"));
+    const camp = await g(`${AD}/campaigns`, { name: "TEST video (à supprimer)", objective: "OUTCOME_TRAFFIC", status: "PAUSED", special_ad_categories: [], is_adset_budget_sharing_enabled: false }, "POST"); campId = camp.id;
+    const start = new Date(Date.now() + 864e5), end = new Date(start.getTime() + 3 * 864e5);
+    const adset = await g(`${AD}/adsets`, { name: "TEST", campaign_id: camp.id, lifetime_budget: 500, start_time: start.toISOString(), end_time: end.toISOString(), billing_event: "IMPRESSIONS", optimization_goal: "LINK_CLICKS", bid_strategy: "LOWEST_COST_WITHOUT_CAP", destination_type: "WEBSITE", targeting: { age_min: 18, age_max: 45, targeting_automation: { advantage_audience: 0 }, geo_locations: { countries: ["SN"] } }, status: "PAUSED" }, "POST");
+    const cr = await g(`${AD}/adcreatives`, { name: "TEST v", object_story_spec: { page_id: PAGE, video_data: { video_id: vid, image_url: thumb, message: "Test", title: "Test", call_to_action: { type: "LEARN_MORE", value: { link: "https://statupub.com" } } } } }, "POST");
+    steps.push("visuel vidéo ok");
+    await g(`${AD}/ads`, { name: "TEST v", adset_id: adset.id, creative: { creative_id: cr.id }, status: "PAUSED" }, "POST");
+    steps.push("pub vidéo ok");
+  } catch (e) { steps.push("ERREUR: " + (e as Error).message); }
+  if (campId) await g(campId, {}, "DELETE").then(() => steps.push("campagne supprimée")).catch(() => {});
+  return { steps };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST uniquement" }, 405);
@@ -151,6 +198,7 @@ Deno.serve(async (req) => {
     if (hook) {
       const { data: cfg } = await sb.rpc("push_config");
       if (hook !== cfg?.hook) return json({ error: "forbidden" }, 403);
+      if (body.action === "dryrun_video") return json(await dryrunVideo(body.url || "https://statupub.com/media/statupub-presentation.mp4"));
       return json(await sync());
     }
     const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
