@@ -46,20 +46,25 @@ async function launch(id: string) {
   const { data: o } = await sb.from("meta_orders").select("*").eq("id", id).single();
   if (!o) throw new Error("Commande introuvable");
   if (o.status !== "en_attente") throw new Error("Cette pub n'est plus en attente");
-  if (!o.media_url) throw new Error("Pas de visuel");
-  if (/\.(mp4|mov|webm)($|\?)/i.test(o.media_url)) throw new Error("Vidéo : le lancement automatique gère seulement les images pour l'instant. Lance celle-ci à la main dans le Gestionnaire de publicités.");
+  const medias: string[] = (o.media_urls?.length ? o.media_urls : [o.media_url]).filter(Boolean).slice(0, 3);
+  if (!medias.length) throw new Error("Pas de visuel");
+  if (medias.some((u) => /\.(mp4|mov|webm)($|\?)/i.test(u))) throw new Error("Vidéo : le lancement automatique gère seulement les images pour l'instant. Lance celle-ci à la main dans le Gestionnaire de publicités.");
 
   const eurCents = Math.floor((o.ad_budget / XOF_PER_EUR) * 100);
   if (eurCents < o.days * 100) throw new Error(`Budget trop faible pour Meta : au moins 1 € (≈ 656 F) par jour de diffusion. Ici ${(eurCents / 100).toFixed(2)} € pour ${o.days} jours.`);
 
-  // 1. Visuel
-  const img = await fetch(o.media_url);
-  if (!img.ok) throw new Error("Visuel introuvable");
-  const buf = new Uint8Array(await img.arrayBuffer());
-  let bin = ""; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
-  const up = await g(`${AD}/adimages`, { bytes: btoa(bin) }, "POST");
-  const hash = (Object.values(up.images || {})[0] as any)?.hash;
-  if (!hash) throw new Error("Envoi du visuel à Meta impossible");
+  // 1. Visuels
+  const hashes: string[] = [];
+  for (const u of medias) {
+    const img = await fetch(u);
+    if (!img.ok) throw new Error("Visuel introuvable");
+    const buf = new Uint8Array(await img.arrayBuffer());
+    let bin = ""; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+    const up = await g(`${AD}/adimages`, { bytes: btoa(bin) }, "POST");
+    const h = (Object.values(up.images || {})[0] as any)?.hash;
+    if (!h) throw new Error("Envoi du visuel à Meta impossible");
+    hashes.push(h);
+  }
 
   const ids: Record<string, string> = {};
   const name = `SP · ${o.title}`.slice(0, 100);
@@ -77,13 +82,15 @@ async function launch(id: string) {
     const adset = await g(`${AD}/adsets`, { name, campaign_id: camp.id, lifetime_budget: eurCents, start_time: start.toISOString(), end_time: end.toISOString(),
       billing_event: "IMPRESSIONS", optimization_goal: "LINK_CLICKS", bid_strategy: "LOWEST_COST_WITHOUT_CAP", destination_type: "WEBSITE", targeting, status: "PAUSED" }, "POST");
     ids.adset = adset.id;
-    // 4. Visuel + texte
+    // 4-5. Un visuel = une pub (même budget partagé : Meta privilégie la meilleure)
     const cta = o.objective === "site" ? "SHOP_NOW" : "LEARN_MORE";
-    const creative = await g(`${AD}/adcreatives`, { name, object_story_spec: { page_id: PAGE, link_data: { image_hash: hash, link: o.target_url, message: o.message, name: o.title, call_to_action: { type: cta, value: { link: o.target_url } } } } }, "POST");
-    ids.creative = creative.id;
-    // 5. Pub
-    const ad = await g(`${AD}/ads`, { name, adset_id: adset.id, creative: { creative_id: creative.id }, status: "ACTIVE" }, "POST");
-    ids.ad = ad.id;
+    for (const [i, hash] of hashes.entries()) {
+      const label = hashes.length > 1 ? `${name} · V${i + 1}` : name;
+      const creative = await g(`${AD}/adcreatives`, { name: label, object_story_spec: { page_id: PAGE, link_data: { image_hash: hash, link: o.target_url, message: o.message, name: o.title, call_to_action: { type: cta, value: { link: o.target_url } } } } }, "POST");
+      const ad = await g(`${AD}/ads`, { name: label, adset_id: adset.id, creative: { creative_id: creative.id }, status: "ACTIVE" }, "POST");
+      if (i === 0) { ids.creative = creative.id; ids.ad = ad.id; }
+      ids[`ad${i + 1}`] = ad.id;
+    }
     await g(adset.id, { status: "ACTIVE" }, "POST");
     await g(camp.id, { status: "ACTIVE" }, "POST");
     await sb.from("meta_orders").update({ status: "en_cours", started_at: new Date().toISOString(), ends_at: end.toISOString(), meta_campaign_id: camp.id, meta_ids: ids, last_error: null }).eq("id", id);
