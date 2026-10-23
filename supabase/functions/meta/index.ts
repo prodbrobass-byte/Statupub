@@ -147,7 +147,8 @@ async function sync() {
   for (const o of data || []) {
     try {
       const res = await insights(o.meta_campaign_id);
-      await sb.from("meta_orders").update({ results: res, last_error: null }).eq("id", o.id);
+      const issue = await adIssues(o.meta_campaign_id).catch(() => null);
+      await sb.from("meta_orders").update({ results: res, last_error: issue }).eq("id", o.id);
       // Sécurité : budget du client atteint → on coupe chez Meta tout de suite
       if (res.spend >= o.ad_budget * 0.97) { await g(o.meta_campaign_id, { status: "PAUSED" }, "POST").catch(() => {}); await finish(o, res); }
       else if (o.ends_at && new Date(o.ends_at).getTime() + 3 * 36e5 < Date.now()) await finish(o, res);
@@ -200,6 +201,34 @@ async function inspect(campaignId: string) {
   return { acc, camp, adsets, ads };
 }
 
+// Problèmes signalés par Meta sur les pubs (refus, blocage du compte…) → affichés dans l'admin
+async function adIssues(campaignId: string) {
+  const r = await g(`${campaignId}/ads`, { fields: "name,effective_status,issues_info,ad_review_feedback" });
+  const out: string[] = [];
+  for (const a of r.data || []) {
+    if (!["WITH_ISSUES", "DISAPPROVED"].includes(a.effective_status)) continue;
+    const fb = a.ad_review_feedback?.global ? Object.values(a.ad_review_feedback.global)[0] : null;
+    out.push(`${String(a.name).split(" · ").pop()} : ${a.issues_info?.[0]?.error_summary || fb || a.effective_status}`);
+  }
+  return out.length ? "Meta : " + out.join(" | ") : null;
+}
+
+// Réactive chez Meta les pubs d'une commande en cours (après un blocage réglé)
+async function resume(id: string) {
+  const { data: o } = await sb.from("meta_orders").select("*").eq("id", id).single();
+  if (!o || o.status !== "en_cours" || !o.meta_campaign_id) throw new Error("La pub n'est pas en cours");
+  const ids = (o.meta_ids || {}) as Record<string, string>;
+  const ads = Object.entries(ids).filter(([k]) => /^ad\d$/.test(k)).map(([, v]) => v);
+  const errs: string[] = [];
+  for (const ad of ads) await g(ad, { status: "ACTIVE" }, "POST").catch((e) => errs.push(e.message));
+  if (ids.adset) await g(ids.adset, { status: "ACTIVE" }, "POST").catch((e) => errs.push(e.message));
+  await g(o.meta_campaign_id, { status: "ACTIVE" }, "POST").catch((e) => errs.push(e.message));
+  await new Promise((r) => setTimeout(r, 4000));
+  const issue = await adIssues(o.meta_campaign_id).catch(() => null);
+  await sb.from("meta_orders").update({ last_error: errs.length ? errs.join(" | ") : issue }).eq("id", id);
+  return { ok: !errs.length && !issue, errors: errs, issue, state: await inspect(o.meta_campaign_id) };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST uniquement" }, 405);
@@ -211,6 +240,7 @@ Deno.serve(async (req) => {
       const { data: cfg } = await sb.rpc("push_config");
       if (hook !== cfg?.hook) return json({ error: "forbidden" }, 403);
       if (body.action === "inspect") return json(await inspect(body.campaign_id));
+      if (body.action === "resume") return json(await resume(body.order_id));
       if (body.action === "dryrun_video") return json(await dryrunVideo(body.url || "https://statupub.com/media/statupub-presentation.mp4"));
       return json(await sync());
     }
@@ -227,6 +257,7 @@ Deno.serve(async (req) => {
     if (body.action === "launch") return json(await launch(body.order_id));
     if (body.action === "sync") return json(await sync());
     if (body.action === "stop") return json(await stop(body.order_id));
+    if (body.action === "resume") return json(await resume(body.order_id));
     return json({ error: "Action inconnue" }, 400);
   } catch (e) {
     return json({ error: (e as Error).message }, e instanceof MetaErr ? 422 : 500);

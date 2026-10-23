@@ -1362,7 +1362,7 @@ async function adminMeta(body, reload) {
       <div class="grid g3" style="gap:8px">${[["reach", "Personnes touchées"], ["impressions", "Affichages"], ["clicks", "Clics"], ["messages", "Conversations"], ["spend", "Dépensé (F)"]].map(([k, l]) => `<label for="r-${k}-${o.id}" class="small">${l}<input id="r-${k}-${o.id}" type="number" min="0" inputmode="numeric" value="${o.results?.[k] ?? ""}"></label>`).join("")}</div>
       ${o.last_error ? `<div class="notice warn small"><span><b>Meta :</b> ${esc(o.last_error)}</span></div>` : ""}
       ${o.meta_ids?.ad ? `<p class="small" style="margin:0">🤖 Pub automatique · résultats mis à jour toutes les 2 h · fin le ${dateTimeFr(o.ends_at)}</p>
-      <div class="row"><button class="btn btn-ghost btn-sm" data-sync="1">🔄 Actualiser les résultats</button><button class="btn btn-bad btn-sm" data-stop="${o.id}">⏹ Arrêter maintenant</button></div>`
+      <div class="row"><button class="btn btn-ghost btn-sm" data-sync="1">🔄 Actualiser les résultats</button>${o.last_error ? `<button class="btn btn-primary btn-sm" data-resume="${o.id}">🔁 Relancer chez Meta</button>` : ""}<button class="btn btn-bad btn-sm" data-stop="${o.id}">⏹ Arrêter maintenant</button></div>`
       : `<div class="row"><button class="btn btn-ghost btn-sm" data-res="${o.id}">Mettre à jour les résultats</button><button class="btn btn-primary btn-sm" data-fin="${o.id}">Terminer</button></div>`}
       <p class="small muted" style="margin:0">En terminant, ce qui n'a pas été dépensé chez Meta (budget pub ${fcfa(o.ad_budget)} F − dépensé) est rendu au solde de l'annonceur. Ta commission reste acquise.</p></div>`).join("") : `<p class="small muted">Aucune pub en diffusion.</p>`}
     <h2>Historique</h2>
@@ -1379,6 +1379,8 @@ async function adminMeta(body, reload) {
     if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Confirmer : lancer et dépenser le budget ?"; return; }
     busy(b, true); try { await metaApi({ action: "launch", order_id: b.dataset.auto }); toast("🚀 Pub créée chez Meta ! Elle démarre après la vérification de Meta."); reload(); } catch (e) { toast(errMsg(e), true); reload(); } });
   body.querySelectorAll("[data-sync]").forEach((b) => b.onclick = async () => { busy(b, true); try { await metaApi({ action: "sync" }); toast("Résultats à jour"); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } });
+  body.querySelectorAll("[data-resume]").forEach((b) => b.onclick = async () => { busy(b, true);
+    try { const d = await metaApi({ action: "resume", order_id: b.dataset.resume }); toast(d.ok ? "🔁 Pubs relancées : Meta les vérifie" : "Meta bloque encore : " + (d.issue || d.errors.join(" | ")), !d.ok); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } });
   body.querySelectorAll("[data-stop]").forEach((b) => b.onclick = async () => {
     if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Confirmer l'arrêt ?"; return; }
     busy(b, true); try { await metaApi({ action: "stop", order_id: b.dataset.stop }); toast("Pub arrêtée, budget restant rendu"); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } });
