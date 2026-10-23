@@ -1607,6 +1607,29 @@ async function adminRequests(body, reload, table, fn, who, labelOk) {
     <h2 style="margin-top:12px">Historique</h2>
     <div class="table"><table>${head}<tbody>${data.filter((r) => !isPend(r) && !(r.method === "paydunya" && r.status === "en_attente")).map((r) => row(r, false)).join("") || `<tr><td colspan="6" class="muted">Aucun historique.</td></tr>`}</tbody></table></div></div>`;
   const act = async (b, approve) => { busy(b, true); try { await rpc(fn, { p_id: b.dataset.ok || b.dataset.no, p_approve: approve }); toast(approve ? "Validé" : "Refusé"); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } };
+  body.querySelectorAll("[data-ok]").forEach((b) => b.onclick = () => act(b, true));
+  body.querySelectorAll("[data-no]").forEach((b) => b.onclick = () => act(b, false));
+}
+const adminRecharges = (b, r) => adminRequests(b, r, "recharges", "admin_process_recharge", "Annonceur", "Valider");
+async function adminWithdrawals(body, reload) {
+  const pay = await payStatus();
+  const { data, error } = await sb.from("withdrawals").select("*, profiles(full_name, phone, country)").order("created_at", { ascending: false }).limit(150);
+  if (error) throw error;
+  const pend = data.filter((r) => r.status === "en_attente"), running = data.filter((r) => r.status === "en_cours");
+  const who = (r) => `${esc(r.profiles?.full_name)}<div class="small muted">${esc((COUNTRIES[r.profiles?.country] || {}).name || "")}</div>`;
+  const row = (r, act) => `<tr><td>${dateTimeFr(r.created_at)}</td><td>${who(r)}${act ? `<button type="button" class="btn btn-ghost btn-sm" data-chk="${r.id}" style="margin-top:6px">🔍 Contrôle…</button>` : ""}</td><td>${METHODS[r.method] || esc(r.method)}</td><td class="num">${esc(r.phone)}</td><td class="n">${fcfa(r.amount)}</td><td>${act
+    ? `<div class="row" style="flex-wrap:nowrap">${pay.configured ? `<button class="btn btn-primary btn-sm" data-pd="${r.id}">Payer via PayDunya</button>` : ""}<button class="btn btn-ghost btn-sm" data-ok="${r.id}">Payé à la main</button><button class="btn btn-bad btn-sm" data-no="${r.id}">Refuser</button></div>${r.admin_note ? `<div class="small muted">${esc(r.admin_note)}</div>` : ""}`
+    : `${pill(r.status)}${r.admin_note ? `<div class="small muted">${esc(r.admin_note)}</div>` : ""}`}</td></tr>`;
+  const head = `<thead><tr><th>Date</th><th>Diffuseur</th><th>Moyen</th><th>Numéro</th><th class="n">Montant</th><th></th></tr></thead>`;
+  body.innerHTML = `<div class="stack">
+    <div class="notice info small"><span>${pay.configured ? `« Payer via PayDunya » envoie l'argent automatiquement depuis votre solde PayDunya${pay.mode === "test" ? " (mode test)" : ""}. Vérifiez que ce solde est suffisant.` : "PayDunya n'est pas encore branché : envoyez l'argent depuis votre téléphone, puis cliquez sur « Payé à la main »."}</span></div>
+    <h2>À payer (${pend.length})</h2>
+    ${pend.length ? `<div class="table"><table>${head}<tbody>${pend.map((r) => row(r, true)).join("")}</tbody></table></div>` : `<div class="empty">Rien à payer.</div>`}
+    ${running.length ? `<div class="row between" style="margin-top:12px"><h2>Paiements en cours (${running.length})</h2><button class="btn btn-ghost btn-sm" id="pd-sync">Revérifier</button></div>
+      <div class="table"><table>${head}<tbody>${running.map((r) => row(r, false)).join("")}</tbody></table></div>` : ""}
+    <h2 style="margin-top:12px">Historique</h2>
+    <div class="table"><table>${head}<tbody>${data.filter((r) => !["en_attente", "en_cours"].includes(r.status)).map((r) => row(r, false)).join("") || `<tr><td colspan="6" class="muted">Aucun historique.</td></tr>`}</tbody></table></div></div>`;
+  const act = async (b, approve) => { busy(b, true); try { await rpc("admin_process_withdrawal", { p_id: b.dataset.ok || b.dataset.no, p_approve: approve }); toast(approve ? "Marqué payé" : "Refusé"); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } };
   const checks = {};
   const LV = { vert: ["🟢", "Aucun signe de fraude"], orange: ["🟠", "À vérifier"], rouge: ["🔴", "Risque élevé : ne paie pas sans vérifier"] };
   body.querySelectorAll("[data-chk]").forEach(async (b) => {
@@ -1632,29 +1655,6 @@ async function adminRequests(body, reload, table, fn, who, labelOk) {
   });
   const guard = (b, fn) => { const c = checks[b.dataset.ok || b.dataset.pd]; if (c?.niveau === "rouge" && b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "🔴 Payer quand même ?"; toast("Ce retrait présente un risque élevé : ouvre le contrôle avant de payer", true); return; } fn(); };
   body.querySelectorAll("[data-ok]").forEach((b) => b.onclick = () => guard(b, () => act(b, true)));
-  body.querySelectorAll("[data-no]").forEach((b) => b.onclick = () => act(b, false));
-}
-const adminRecharges = (b, r) => adminRequests(b, r, "recharges", "admin_process_recharge", "Annonceur", "Valider");
-async function adminWithdrawals(body, reload) {
-  const pay = await payStatus();
-  const { data, error } = await sb.from("withdrawals").select("*, profiles(full_name, phone, country)").order("created_at", { ascending: false }).limit(150);
-  if (error) throw error;
-  const pend = data.filter((r) => r.status === "en_attente"), running = data.filter((r) => r.status === "en_cours");
-  const who = (r) => `${esc(r.profiles?.full_name)}<div class="small muted">${esc((COUNTRIES[r.profiles?.country] || {}).name || "")}</div>`;
-  const row = (r, act) => `<tr><td>${dateTimeFr(r.created_at)}</td><td>${who(r)}${act ? `<button type="button" class="btn btn-ghost btn-sm" data-chk="${r.id}" style="margin-top:6px">🔍 Contrôle…</button>` : ""}</td><td>${METHODS[r.method] || esc(r.method)}</td><td class="num">${esc(r.phone)}</td><td class="n">${fcfa(r.amount)}</td><td>${act
-    ? `<div class="row" style="flex-wrap:nowrap">${pay.configured ? `<button class="btn btn-primary btn-sm" data-pd="${r.id}">Payer via PayDunya</button>` : ""}<button class="btn btn-ghost btn-sm" data-ok="${r.id}">Payé à la main</button><button class="btn btn-bad btn-sm" data-no="${r.id}">Refuser</button></div>${r.admin_note ? `<div class="small muted">${esc(r.admin_note)}</div>` : ""}`
-    : `${pill(r.status)}${r.admin_note ? `<div class="small muted">${esc(r.admin_note)}</div>` : ""}`}</td></tr>`;
-  const head = `<thead><tr><th>Date</th><th>Diffuseur</th><th>Moyen</th><th>Numéro</th><th class="n">Montant</th><th></th></tr></thead>`;
-  body.innerHTML = `<div class="stack">
-    <div class="notice info small"><span>${pay.configured ? `« Payer via PayDunya » envoie l'argent automatiquement depuis votre solde PayDunya${pay.mode === "test" ? " (mode test)" : ""}. Vérifiez que ce solde est suffisant.` : "PayDunya n'est pas encore branché : envoyez l'argent depuis votre téléphone, puis cliquez sur « Payé à la main »."}</span></div>
-    <h2>À payer (${pend.length})</h2>
-    ${pend.length ? `<div class="table"><table>${head}<tbody>${pend.map((r) => row(r, true)).join("")}</tbody></table></div>` : `<div class="empty">Rien à payer.</div>`}
-    ${running.length ? `<div class="row between" style="margin-top:12px"><h2>Paiements en cours (${running.length})</h2><button class="btn btn-ghost btn-sm" id="pd-sync">Revérifier</button></div>
-      <div class="table"><table>${head}<tbody>${running.map((r) => row(r, false)).join("")}</tbody></table></div>` : ""}
-    <h2 style="margin-top:12px">Historique</h2>
-    <div class="table"><table>${head}<tbody>${data.filter((r) => !["en_attente", "en_cours"].includes(r.status)).map((r) => row(r, false)).join("") || `<tr><td colspan="6" class="muted">Aucun historique.</td></tr>`}</tbody></table></div></div>`;
-  const act = async (b, approve) => { busy(b, true); try { await rpc("admin_process_withdrawal", { p_id: b.dataset.ok || b.dataset.no, p_approve: approve }); toast(approve ? "Marqué payé" : "Refusé"); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } };
-  body.querySelectorAll("[data-ok]").forEach((b) => b.onclick = () => act(b, true));
   body.querySelectorAll("[data-no]").forEach((b) => b.onclick = () => act(b, false));
   body.querySelectorAll("[data-pd]").forEach((b) => b.onclick = () => guard(b, async () => {
     busy(b, true);
