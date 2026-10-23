@@ -148,6 +148,7 @@ tr:last-child td{border-bottom:none}
 td.n,th.n{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 
 .tabs{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--line);scrollbar-width:none}
+.tabs[role="tablist"]:has([data-t]){flex-wrap:wrap;overflow:visible}
 .tab{appearance:none;background:none;border:none;border-bottom:3px solid transparent;padding:.8rem .9rem;font:600 .95rem var(--f-body);color:var(--muted);cursor:pointer;white-space:nowrap}
 .tab[aria-selected="true"]{color:var(--text);border-bottom-color:var(--saffron)}
 .tab .count{background:var(--saffron);color:#231705;border-radius:99px;padding:0 .45rem;font-size:.75rem;margin-left:6px}
