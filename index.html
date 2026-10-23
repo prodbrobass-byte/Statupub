@@ -780,7 +780,7 @@ async function viewAnnonceur() {
   const pend = rech.filter((r) => r.status === "en_attente" && r.method !== "paydunya");
   app.innerHTML = `<main class="wrap">
     <div class="page-head"><div><p class="eyebrow">Espace annonceur</p><h1 style="font-size:2rem">Bonjour ${esc((state.profile.full_name || "").split(" ")[0])}</h1></div>
-      <div class="row"><button class="btn btn-ghost" id="b-recharge">Recharger mon compte</button><button class="btn btn-ink" id="b-meta">📘 Pub Facebook / Instagram${state.settings?.meta_enabled === false ? ` <span class="pill p-warn" style="margin-left:6px;font-size:.7rem">Bientôt</span>` : ""}</button><button class="btn btn-primary" id="b-new">Nouvelle campagne</button></div></div>
+      <div class="row"><button class="btn btn-ghost" id="b-recharge">Recharger mon compte</button><button class="btn btn-ink" id="b-meta">📘 Facebook Ads${state.settings?.meta_enabled === false ? ` <span class="pill p-warn" style="margin-left:6px;font-size:.7rem">Bientôt</span>` : ""}</button><button class="btn btn-primary" id="b-new">Nouvelle campagne</button></div></div>
     ${pend.length ? `<div class="notice info" style="margin-bottom:16px"><div><b>${pend.length} recharge${pend.length > 1 ? "s" : ""} en cours de vérification</b><p class="small muted">Votre solde sera crédité dès que nous aurons confirmé la réception du paiement (en général sous 1 h, de 8 h à 22 h).</p></div></div>` : ""}
     <div class="grid g4" style="margin-bottom:24px">
       <div class="card wallet kpi"><span class="eyebrow">Solde disponible</span><span class="big">${fcfa(w.available)}</span><span class="small muted">FCFA pour de nouvelles campagnes</span></div>
@@ -1219,7 +1219,7 @@ async function renderMetaSection(available) {
   const box = $("#meta-box");
   const { data } = await sb.from("meta_orders").select("*").eq("annonceur_id", state.profile.id).order("created_at", { ascending: false }).limit(30);
   if (!document.body.contains(box)) return;
-  box.innerHTML = `<div class="row between"><h2>Mes pubs Facebook & Instagram</h2><button class="btn btn-ghost btn-sm" id="b-meta2">${state.settings?.meta_enabled === false ? "En savoir plus" : "+ Nouvelle pub"}</button></div>
+  box.innerHTML = `<div class="row between"><h2>Mes Facebook Ads</h2><button class="btn btn-ghost btn-sm" id="b-meta2">${state.settings?.meta_enabled === false ? "En savoir plus" : "+ Nouvelle pub"}</button></div>
     ${data?.length ? `<div class="grid g2">${data.map((o) => `<article class="card stack">
       <div class="row between" style="flex-wrap:nowrap;align-items:flex-start"><h3 style="min-width:0;overflow-wrap:anywhere">${esc(o.title)}</h3>${metaPill(o.status)}</div>
       <p class="small muted" style="margin:0">${META_OBJ[o.objective]} · ${o.days} jour${o.days > 1 ? "s" : ""} · ${o.countries.map((c) => META_COUNTRIES[c] || c).join(", ")} · Budget ${fcfa(o.budget)} F</p>
@@ -1235,12 +1235,12 @@ async function renderMetaSection(available) {
 function metaOrderModal(available) {
   const s = state.settings || {};
   if (s.meta_enabled === false) return openModal(`<div class="row between"><h2>📘 Bientôt disponible</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
-    <p><b>Les pubs Facebook et Instagram arrivent très bientôt sur StatuPub.</b></p>
+    <p><b>Facebook Ads arrive très bientôt sur StatuPub.</b></p>
     <p class="muted">Tu pourras faire connaître ton business sur Facebook et Instagram en payant par Wave ou Orange Money, sans carte bancaire : tu choisis ton budget et ta cible, on s'occupe de tout.</p>
     <p class="small muted">Active les notifications (la 🔔 en haut) pour être prévenu dès l'ouverture.</p>
     <button class="btn btn-primary" data-close>D'accord</button>`);
   const minB = s.meta_min_budget || 5000, rate = Number(s.meta_commission ?? 0.15);
-  openModal(`<div class="row between"><h2>Pub Facebook / Instagram</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
+  openModal(`<div class="row between"><h2>📘 Facebook Ads</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
     ${available < minB ? `<div class="notice warn small"><span>Ton solde (${fcfa(available)} F) est inférieur au budget minimum de ${fcfa(minB)} F. <button type="button" class="btn btn-ink btn-sm" id="mo-rc" style="margin-top:8px">Recharger d'abord</button></span></div>` : ""}
     <form id="mo-form" class="stack">
       <label for="mo-title">Nom de la pub<input id="mo-title" maxlength="80" placeholder="Promo Tabaski boutique Awa"></label>
@@ -1272,7 +1272,7 @@ function metaOrderModal(available) {
       $("#mo-link", m).placeholder = o === "whatsapp" ? "221771234567" : "https://"; $("#mo-link", m).inputMode = o === "whatsapp" ? "tel" : "url"; };
     m.querySelectorAll('input[name="mo-obj"]').forEach((r) => r.onchange = setObj);
     const est = () => { const b = +$("#mo-budget", m).value || 0, d = Math.max(1, +$("#mo-days", m).value || 1), com = Math.round(b * rate);
-      $("#mo-est", m).innerHTML = `<span>Diffusion chez Meta : <b class="num">${fcfa(b - com)} F</b> (environ ${fcfa((b - com) / d)} F par jour) · Frais de gestion StatuPub : <b class="num">${fcfa(com)} F</b> (${Math.round(rate * 100)} %)</span>`; };
+      $("#mo-est", m).innerHTML = `<span>Ta pub sera diffusée sur Facebook et Instagram pendant <b>${d} jour${d > 1 ? "s" : ""}</b>. Frais de gestion StatuPub : <b>${Math.round(rate * 100)} %</b> inclus. Ta pub s'arrête automatiquement quand ton budget est atteint.</span>`; };
     $("#mo-budget", m).oninput = $("#mo-days", m).oninput = est; est();
     $("#mo-form", m).onsubmit = async (e) => {
       e.preventDefault(); const btn = $("#mo-btn", m);
@@ -1298,7 +1298,7 @@ function metaOrderModal(available) {
         const media = sb.storage.from("creatives").getPublicUrl(path).data.publicUrl;
         await rpc("create_meta_order", { p_title: title, p_objective: o, p_message: msg, p_media_url: media, p_target_url: link, p_countries: countries,
           p_cities: $("#mo-cities", m).value.trim(), p_age_min: +$("#mo-amin", m).value || 18, p_age_max: +$("#mo-amax", m).value || 65, p_gender: $("#mo-gender", m).value, p_days: days, p_budget: budget });
-        closeModal(); toast("Demande envoyée ! On prépare ta pub Facebook 🚀"); viewAnnonceur();
+        closeModal(); toast("Demande envoyée ! On prépare ta Facebook Ads 🚀"); viewAnnonceur();
       } catch (err) { toast(errMsg(err), true); busy(btn, false); }
     };
   });
@@ -1479,7 +1479,7 @@ async function viewAdmin(tab) {
   app.innerHTML = `<div class="spinner"></div>`;
   const ov = await rpc("admin_overview");
   const tabs = [["campagnes", "Campagnes", ov.campagnes_attente], ["recharges", "Recharges", ov.recharges_attente], ["retraits", "Retraits", ov.retraits_attente],
-    ["diffuseurs", "Diffuseurs"], ["ambassadeurs", "Ambassadeurs"], ["messages", "Messages", ov.messages_non_lus], ["annonceurs", "Annonceurs"], ["challenge", "Challenge"], ["meta", "Facebook", ov.meta_attente], ["avis", "Avis", ov.avis_attente], ["vitrine", "Vitrine"], ["emails", "E-mails"], ["clics", "Clics"], ["reglages", "Réglages"]];
+    ["diffuseurs", "Diffuseurs"], ["ambassadeurs", "Ambassadeurs"], ["messages", "Messages", ov.messages_non_lus], ["annonceurs", "Annonceurs"], ["challenge", "Challenge"], ["meta", "Facebook Ads", ov.meta_attente], ["avis", "Avis", ov.avis_attente], ["vitrine", "Vitrine"], ["emails", "E-mails"], ["clics", "Clics"], ["reglages", "Réglages"]];
   const marge = ov.ca_total - ov.reverse_total - (ov.commissions_total || 0);
   app.innerHTML = `<main class="wrap">
     <div class="page-head"><div><p class="eyebrow">Administration</p><h1 style="font-size:2rem">Tableau de bord StatuPub</h1></div><button class="btn btn-ghost btn-sm" id="refresh">Actualiser</button></div>
@@ -1841,8 +1841,8 @@ async function adminSettings(body) {
     <h3 style="margin-top:8px">Tarifs</h3>
     <div class="grid g2">${f("cpc_min", "Prix minimum du clic (FCFA)", "Payé par l'annonceur")}${f("payout_ratio", "Part reversée au diffuseur", "0.5 = 50 % du prix du clic", "number", "0.05")}
     ${f("min_budget", "Budget minimum d'une campagne (FCFA)", "")}${f("min_withdrawal", "Retrait minimum (FCFA)", "")}</div>
-    <h3 style="margin-top:8px">Pubs Facebook / Instagram</h3>
-    <label for="st-meta_enabled" style="flex-direction:row;align-items:center;gap:10px"><input id="st-meta_enabled" type="checkbox" ${s.meta_enabled ? "checked" : ""} style="width:auto"> Pubs Facebook / Instagram ouvertes aux annonceurs<span class="hint" style="margin:0">(décoché = « Bientôt disponible »)</span></label>
+    <h3 style="margin-top:8px">Facebook Ads</h3>
+    <label for="st-meta_enabled" style="flex-direction:row;align-items:center;gap:10px"><input id="st-meta_enabled" type="checkbox" ${s.meta_enabled ? "checked" : ""} style="width:auto"> Facebook Ads ouvert aux annonceurs<span class="hint" style="margin:0">(décoché = « Bientôt disponible »)</span></label>
     <div class="grid g2">${f("meta_commission", "Commission StatuPub", "0.15 = 15 % du budget de chaque pub", "number", "0.01")}${f("meta_min_budget", "Budget minimum d'une pub Facebook (FCFA)", "")}</div>
     <h3 style="margin-top:8px">Anti-fraude</h3>
     <div class="grid g2">${f("hold_hours", "Délai de vérification des gains (heures)", "Avant que les gains soient retirables")}${f("daily_cap_per_link", "Clics max par jour et par diffuseur", "Sur une même campagne")}

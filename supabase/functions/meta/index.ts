@@ -87,7 +87,7 @@ async function launch(id: string) {
     await g(adset.id, { status: "ACTIVE" }, "POST");
     await g(camp.id, { status: "ACTIVE" }, "POST");
     await sb.from("meta_orders").update({ status: "en_cours", started_at: new Date().toISOString(), ends_at: end.toISOString(), meta_campaign_id: camp.id, meta_ids: ids, last_error: null }).eq("id", id);
-    await notify(o.annonceur_id, "📘 Ta pub Facebook est lancée", `${o.title} : elle passe en vérification chez Meta puis démarre (en général sous quelques heures).`);
+    await notify(o.annonceur_id, "📘 Ta Facebook Ads est lancée", `${o.title} : elle passe en vérification chez Meta puis démarre (en général sous quelques heures).`);
     return { ok: true, ids };
   } catch (e) {
     if (ids.campaign) await g(ids.campaign, {}, "DELETE").catch(() => {});
@@ -106,7 +106,7 @@ async function finish(o: any, res: any) {
   const spend = Math.min(o.ad_budget, res.spend || 0);
   const refund = Math.max(0, o.ad_budget - spend);
   await sb.from("meta_orders").update({ status: "terminee", ended_at: new Date().toISOString(), refunded: refund, results: { ...res, spend } }).eq("id", o.id).eq("status", "en_cours");
-  await notify(o.annonceur_id, "🏁 Pub Facebook terminée", `${o.title} : ${res.reach || 0} personnes touchées, ${res.clicks || 0} clics.${refund ? ` ${refund} F non dépensés rendus sur ton solde.` : ""}`);
+  await notify(o.annonceur_id, "🏁 Facebook Ads terminée", `${o.title} : ${res.reach || 0} personnes touchées, ${res.clicks || 0} clics.${refund ? ` ${refund} F non dépensés rendus sur ton solde.` : ""}`);
 }
 
 async function sync() {
@@ -116,7 +116,9 @@ async function sync() {
     try {
       const res = await insights(o.meta_campaign_id);
       await sb.from("meta_orders").update({ results: res, last_error: null }).eq("id", o.id);
-      if (o.ends_at && new Date(o.ends_at).getTime() + 3 * 36e5 < Date.now()) await finish(o, res);
+      // Sécurité : budget du client atteint → on coupe chez Meta tout de suite
+      if (res.spend >= o.ad_budget * 0.97) { await g(o.meta_campaign_id, { status: "PAUSED" }, "POST").catch(() => {}); await finish(o, res); }
+      else if (o.ends_at && new Date(o.ends_at).getTime() + 3 * 36e5 < Date.now()) await finish(o, res);
       n++;
     } catch (e) { await sb.from("meta_orders").update({ last_error: (e as Error).message }).eq("id", o.id); }
   }
