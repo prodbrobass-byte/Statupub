@@ -265,6 +265,7 @@ main{padding-block:24px 64px}
 .lb{width:100%;border-collapse:collapse}
 .lb td{padding:10px 8px;border-bottom:1px solid var(--line)}
 .lb tr.me td{background:rgba(232,163,61,.14);font-weight:700}
+  input.flash{animation:fl .6s}@keyframes fl{0%,100%{box-shadow:none}40%{box-shadow:0 0 0 4px rgba(232,163,61,.55)}}
 </style>
 </head>
 <body>
@@ -1276,7 +1277,14 @@ function metaOrderModal(available, internal = false) {
     if (internal) { m.querySelector('input[name="mo-obj"][value="site"]').checked = true; setObj(); $("#mo-link", m).value = "https://statupub.com"; $("#mo-budget", m).value = 10000; $("#mo-days", m).value = 5; }
     const est = () => { const b = +$("#mo-budget", m).value || 0, d = Math.max(1, +$("#mo-days", m).value || 1), com = Math.round(b * rate);
       $("#mo-est", m).innerHTML = `<span>Ta pub sera diffusée sur Facebook et Instagram pendant <b>${d} jour${d > 1 ? "s" : ""}</b>. ${internal ? "" : `Frais de gestion StatuPub : <b>${Math.round(rate * 100)} %</b> inclus. `}Ta pub s'arrête automatiquement quand ton budget est atteint.</span>`; };
-    $("#mo-budget", m).oninput = $("#mo-days", m).oninput = est; est();
+    // Meta exige ~1 € (656 F) par jour : si le budget est trop bas pour la durée, on le monte automatiquement
+    const perDay = Math.ceil(660 / (1 - rate));
+    const fitBudget = () => { const d = Math.max(1, +$("#mo-days", m).value || 1), need = Math.max(minB, Math.ceil(d * perDay / 100) * 100), bi = $("#mo-budget", m);
+      bi.min = need; if ((+bi.value || 0) < need) { bi.value = need; bi.classList.add("flash"); setTimeout(() => bi.classList.remove("flash"), 600); } };
+    $("#mo-budget", m).oninput = est;
+    $("#mo-days", m).oninput = () => { fitBudget(); est(); };
+    $("#mo-budget", m).onchange = () => { const d = Math.max(1, +$("#mo-days", m).value || 1); if ((+$("#mo-budget", m).value || 0) < d * perDay) toast(`Pour ${d} jour${d > 1 ? "s" : ""}, Meta demande au moins ${fcfa(Math.ceil(d * perDay / 100) * 100)} F`, true); };
+    fitBudget(); est();
     $("#mo-form", m).onsubmit = async (e) => {
       e.preventDefault(); const btn = $("#mo-btn", m);
       const title = $("#mo-title", m).value.trim(), msg = $("#mo-msg", m).value.trim(), files = [...$("#mo-file", m).files].slice(0, 3), file = files[0], o = obj();
@@ -1292,7 +1300,7 @@ function metaOrderModal(available, internal = false) {
       if (files.some((f) => f.size > (/^video\//.test(f.type) ? 50 : 16) * 1024 * 1024)) return toast("Fichier trop lourd : 16 Mo max pour une image, 50 Mo pour une vidéo", true);
       if (!countries.length) return toast("Choisis au moins un pays", true);
       if (!(budget >= minB)) return toast(`Budget minimum : ${fcfa(minB)} F`, true);
-      { const perDay = Math.ceil(660 / (1 - (internal ? 0 : rate))), maxD = Math.floor(budget / perDay);
+      { const maxD = Math.floor(budget / perDay);
         if (budget < days * perDay) return toast(`Meta demande au moins ${fcfa(perDay)} F par jour : pour ${days} jours, mets ${fcfa(days * perDay)} F ou réduis à ${Math.max(1, maxD)} jour${maxD > 1 ? "s" : ""}.`, true); }
       if (budget > available) return toast("Solde insuffisant : recharge ton compte", true);
       busy(btn, true);
