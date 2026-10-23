@@ -871,7 +871,7 @@ function newCampaignModal(available) {
   const cpcMin = s.cpc_min || 25, minB = s.min_budget || 2500;
   openModal(`
     <div class="row between"><h2>Nouvelle campagne</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
-    ${available < minB ? `<div class="notice warn small"><span>Votre solde (${fcfa(available)} FCFA) est inférieur au budget minimum de ${fcfa(minB)} FCFA. <button type="button" class="btn btn-ink btn-sm" id="go-rc" style="margin-top:8px">Recharger d'abord</button></span></div>` : ""}
+    ${!internal && available < minB ? `<div class="notice warn small"><span>Votre solde (${fcfa(available)} FCFA) est inférieur au budget minimum de ${fcfa(minB)} FCFA. <button type="button" class="btn btn-ink btn-sm" id="go-rc" style="margin-top:8px">Recharger d'abord</button></span></div>` : ""}
     <form id="nc-form" class="stack">
       <label for="nc-title">Nom de la campagne<span class="hint">Pour vous repérer. Les diffuseurs le voient aussi.</span><input id="nc-title" maxlength="80" placeholder="Promo Tabaski -20 %"></label>
       <label for="nc-msg">Texte de la pub<span class="hint">Le texte que les diffuseurs copieront sous le visuel. Le lien est ajouté automatiquement.</span><textarea id="nc-msg" maxlength="1000" placeholder="🐑 Tabaski approche ! -20 % sur tous les boubous chez Awa Mode, livraison gratuite à Dakar."></textarea><span class="hint" id="nc-count" style="text-align:right">0 / 1000</span></label>
@@ -879,7 +879,7 @@ function newCampaignModal(available) {
       <label for="nc-url">Lien de destination<span class="hint">Votre site, votre page ou un lien wa.me vers votre WhatsApp.</span><input id="nc-url" type="url" placeholder="https://wa.me/221771234567"></label>
       <div class="grid g2">
         <label for="nc-cpc">Prix par clic (FCFA)<span class="hint">Minimum ${cpcMin}. Plus il est élevé, plus les diffuseurs la publient.</span><input id="nc-cpc" type="number" min="${cpcMin}" step="5" value="${Math.max(cpcMin, 50)}" inputmode="numeric"></label>
-        <label for="nc-budget">Budget total (FCFA)<span class="hint">Minimum ${fcfa(minB)}. Disponible : ${fcfa(available)}.</span><input id="nc-budget" type="number" min="${minB}" step="500" value="${Math.max(minB, Math.min(10000, available))}" inputmode="numeric"></label>
+        <label for="nc-budget">Budget total (FCFA)<span class="hint">Minimum ${fcfa(minB)}.${internal ? " Payé directement par ta carte Meta, sans commission." : ` Disponible : ${fcfa(available)}.`}</span><input id="nc-budget" type="number" min="${minB}" step="500" value="${Math.max(minB, Math.min(10000, available))}" inputmode="numeric"></label>
       </div>
       <div class="notice ok small" id="nc-est"></div>
       <p class="small muted">Chaque campagne est vérifiée par notre équipe avant diffusion. Contenus interdits : arnaques, jeux d'argent, contenus pour adultes, fausses promesses de gains.</p>
@@ -1233,15 +1233,16 @@ async function renderMetaSection(available) {
   $("#b-meta2").onclick = () => metaOrderModal(available);
 }
 
-function metaOrderModal(available) {
+function metaOrderModal(available, internal = false) {
   const s = state.settings || {};
-  if (s.meta_enabled === false) return openModal(`<div class="row between"><h2>📘 Bientôt disponible</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
+  if (internal) available = 1e12;
+  if (!internal && s.meta_enabled === false) return openModal(`<div class="row between"><h2>📘 Bientôt disponible</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
     <p><b>Facebook Ads arrive très bientôt sur StatuPub.</b></p>
     <p class="muted">Tu pourras faire connaître ton business sur Facebook et Instagram en payant par Wave ou Orange Money, sans carte bancaire : tu choisis ton budget et ta cible, on s'occupe de tout.</p>
     <p class="small muted">Active les notifications (la 🔔 en haut) pour être prévenu dès l'ouverture.</p>
     <button class="btn btn-primary" data-close>D'accord</button>`);
-  const minB = s.meta_min_budget || 5000, rate = Number(s.meta_commission ?? 0.15);
-  openModal(`<div class="row between"><h2>📘 Facebook Ads</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
+  const minB = internal ? 1000 : (s.meta_min_budget || 5000), rate = internal ? 0 : Number(s.meta_commission ?? 0.15);
+  openModal(`<div class="row between"><h2>${internal ? "📣 Pub StatuPub (interne)" : "📘 Facebook Ads"}</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
     ${available < minB ? `<div class="notice warn small"><span>Ton solde (${fcfa(available)} F) est inférieur au budget minimum de ${fcfa(minB)} F. <button type="button" class="btn btn-ink btn-sm" id="mo-rc" style="margin-top:8px">Recharger d'abord</button></span></div>` : ""}
     <form id="mo-form" class="stack">
       <label for="mo-title">Nom de la pub<input id="mo-title" maxlength="80" placeholder="Promo Tabaski boutique Awa"></label>
@@ -1272,8 +1273,9 @@ function metaOrderModal(available) {
       $("#mo-link-h", m).textContent = o === "whatsapp" ? "Avec l'indicatif, ex. : 221771234567" : "Doit commencer par https://";
       $("#mo-link", m).placeholder = o === "whatsapp" ? "221771234567" : "https://"; $("#mo-link", m).inputMode = o === "whatsapp" ? "tel" : "url"; };
     m.querySelectorAll('input[name="mo-obj"]').forEach((r) => r.onchange = setObj);
+    if (internal) { m.querySelector('input[name="mo-obj"][value="site"]').checked = true; setObj(); $("#mo-link", m).value = "https://statupub.com"; $("#mo-budget", m).value = 10000; $("#mo-days", m).value = 5; }
     const est = () => { const b = +$("#mo-budget", m).value || 0, d = Math.max(1, +$("#mo-days", m).value || 1), com = Math.round(b * rate);
-      $("#mo-est", m).innerHTML = `<span>Ta pub sera diffusée sur Facebook et Instagram pendant <b>${d} jour${d > 1 ? "s" : ""}</b>. Frais de gestion StatuPub : <b>${Math.round(rate * 100)} %</b> inclus. Ta pub s'arrête automatiquement quand ton budget est atteint.</span>`; };
+      $("#mo-est", m).innerHTML = `<span>Ta pub sera diffusée sur Facebook et Instagram pendant <b>${d} jour${d > 1 ? "s" : ""}</b>. ${internal ? "" : `Frais de gestion StatuPub : <b>${Math.round(rate * 100)} %</b> inclus. `}Ta pub s'arrête automatiquement quand ton budget est atteint.</span>`; };
     $("#mo-budget", m).oninput = $("#mo-days", m).oninput = est; est();
     $("#mo-form", m).onsubmit = async (e) => {
       e.preventDefault(); const btn = $("#mo-btn", m);
@@ -1297,9 +1299,9 @@ function metaOrderModal(available) {
         const { error } = await sb.storage.from("creatives").upload(path, file, { contentType: file.type, upsert: false });
         if (error) throw error;
         const media = sb.storage.from("creatives").getPublicUrl(path).data.publicUrl;
-        await rpc("create_meta_order", { p_title: title, p_objective: o, p_message: msg, p_media_url: media, p_target_url: link, p_countries: countries,
+        await rpc(internal ? "admin_create_meta_order" : "create_meta_order", { p_title: title, p_objective: o, p_message: msg, p_media_url: media, p_target_url: link, p_countries: countries,
           p_cities: $("#mo-cities", m).value.trim(), p_age_min: +$("#mo-amin", m).value || 18, p_age_max: +$("#mo-amax", m).value || 65, p_gender: $("#mo-gender", m).value, p_days: days, p_budget: budget });
-        closeModal(); toast("Demande envoyée ! On prépare ta Facebook Ads 🚀"); viewAnnonceur();
+        closeModal(); if (internal) { toast("Pub StatuPub créée : clique sur « Lancer automatiquement »"); viewAdmin("meta"); } else { toast("Demande envoyée ! On prépare ta Facebook Ads 🚀"); viewAnnonceur(); }
       } catch (err) { toast(errMsg(err), true); busy(btn, false); }
     };
   });
@@ -1322,6 +1324,7 @@ async function adminMeta(body, reload) {
     <div class="row"><button class="btn btn-ghost btn-sm" data-copy="${esc(o.message)}">Copier le texte</button>${o.media_url ? `<a class="btn btn-ghost btn-sm" href="${esc(o.media_url)}" target="_blank" rel="noopener" download>Télécharger le visuel</a>` : ""}</div>`;
   body.innerHTML = `<div class="stack">
     <div class="grid g3"><div class="card kpi"><span class="eyebrow">À lancer</span><span class="num">${pend.length}</span></div><div class="card kpi"><span class="eyebrow">En diffusion</span><span class="num">${live.length}</span></div><div class="card kpi wallet"><span class="eyebrow">Tes commissions</span><span class="big">${fcfa(com)}</span><span class="small muted">FCFA sur les pubs lancées</span></div></div>
+    <div class="row between"><p class="small muted" style="margin:0">Pour faire la promo de StatuPub elle-même :</p><button class="btn btn-primary" id="mo-internal">📣 Créer une pub StatuPub</button></div>
     <div class="notice info small"><span>« Lancer automatiquement » crée la pub chez Meta (compte Statupub Africa, page Statupub) avec le texte, le visuel, le ciblage et le budget de l'annonceur. Vérifie toujours le contenu avant : c'est ton compte publicitaire qui est engagé.</span></div>
     <h2>À lancer</h2>
     ${pend.length ? pend.map((o) => `<div class="card stack"><div class="row between"><h3>${esc(o.title)}</h3><span class="small muted">${dateTimeFr(o.created_at)}</span></div>${detail(o)}
@@ -1342,6 +1345,7 @@ async function adminMeta(body, reload) {
     <h2>Historique</h2>
     ${done.length ? `<div class="table"><table><thead><tr><th>Date</th><th>Pub</th><th>Annonceur</th><th class="n">Budget</th><th class="n">Commission</th><th>Statut</th></tr></thead><tbody>${done.map((o) => `<tr><td>${dateTimeFr(o.created_at)}</td><td>${esc(o.title)}</td><td>${esc(o.profiles?.company || o.profiles?.full_name || "")}</td><td class="n">${fcfa(o.budget)}</td><td class="n">${o.status === "terminee" ? fcfa(o.commission) : "—"}</td><td>${metaPill(o.status)}${o.refunded ? `<div class="small muted">${fcfa(o.refunded)} F rendus</div>` : ""}</td></tr>`).join("")}</tbody></table></div>` : `<p class="small muted">Rien pour l'instant.</p>`}
   </div>`;
+  $("#mo-internal").onclick = () => metaOrderModal(0, true);
   body.querySelectorAll("[data-copy]").forEach((b) => b.onclick = () => copy(b.dataset.copy, b));
   const act = async (b, args, msg) => { busy(b, true); try { await rpc("admin_meta_update", args); toast(msg); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } };
   const results = (id) => { const r = {}; ["reach", "impressions", "clicks", "messages", "spend"].forEach((k) => { const v = $(`#r-${k}-${id}`).value; if (v !== "") r[k] = Math.max(0, parseInt(v, 10) || 0); }); return r; };
