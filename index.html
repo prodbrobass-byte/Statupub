@@ -1292,6 +1292,8 @@ function metaOrderModal(available, internal = false) {
       if (files.some((f) => f.size > (/^video\//.test(f.type) ? 50 : 16) * 1024 * 1024)) return toast("Fichier trop lourd : 16 Mo max pour une image, 50 Mo pour une vidéo", true);
       if (!countries.length) return toast("Choisis au moins un pays", true);
       if (!(budget >= minB)) return toast(`Budget minimum : ${fcfa(minB)} F`, true);
+      { const perDay = Math.ceil(660 / (1 - (internal ? 0 : rate))), maxD = Math.floor(budget / perDay);
+        if (budget < days * perDay) return toast(`Meta demande au moins ${fcfa(perDay)} F par jour : pour ${days} jours, mets ${fcfa(days * perDay)} F ou réduis à ${Math.max(1, maxD)} jour${maxD > 1 ? "s" : ""}.`, true); }
       if (budget > available) return toast("Solde insuffisant : recharge ton compte", true);
       busy(btn, true);
       try {
