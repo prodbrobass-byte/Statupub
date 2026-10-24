@@ -1138,7 +1138,7 @@ function onboardingCard(p, s) {
         <b>1. Abonne-toi à la Chaîne WhatsApp StatuPub</b>
         <p class="small muted">Chaque nouvelle campagne y est annoncée en premier.</p>
         ${s.whatsapp_channel_url ? `<a class="btn btn-ink btn-sm" href="${esc(s.whatsapp_channel_url)}" target="_blank" rel="noopener" style="align-self:flex-start">Rejoindre la Chaîne</a>` : `<p class="small">Le lien de la Chaîne sera bientôt disponible ici.</p>`}
-        ${p.channel_joined ? `<p class="small" style="color:var(--ok);margin:0">✅ Abonnement vérifié</p>` : `<label for="ob-code" class="small">Code d'activation<span class="hint">Il est dans le <b>message épinglé</b> de la Chaîne. Tu ne peux le voir qu'en étant abonné(e).</span><input id="ob-code" maxlength="20" autocomplete="off" placeholder="Ex. : STATU1234" style="text-transform:uppercase"></label>`}
+        ${p.channel_joined ? `<p class="small" style="color:var(--ok);margin:0">✅ Abonnement vérifié</p>` : `<label for="ob-code" class="small">Code d'activation<span class="hint">Il est dans la <b>description de la Chaîne</b> (appuie sur le nom de la Chaîne, en haut) et il est aussi envoyé régulièrement dans la Chaîne.</span><input id="ob-code" maxlength="20" autocomplete="off" placeholder="Ex. : STATU1234" style="text-transform:uppercase"></label>`}
       </div>
       <div class="card flat stack" style="box-shadow:none">
         <b>2. Indique tes vues moyennes</b>
@@ -1805,7 +1805,7 @@ async function adminDiffuseurs(body, reload) {
       ${srcs.map((r) => `<div class="stack" style="gap:4px"><div class="row between small"><span>${esc(r.source)}</span><span><b>${fcfa(r.total)}</b> <span class="muted">· ${fcfa(r.diffuseurs)} diff. · ${fcfa(r.annonceurs)} ann. · ${fcfa(r.cette_semaine)} cette sem.</span></span></div><div class="bar"><i style="width:${Math.round(r.total / totSrc * 100)}%"></i></div></div>`).join("") || `<div class="empty small">Pas encore de réponses.</div>`}
     </div>
     <div class="card stack"><div class="row between"><h3>Abonnement non vérifié (${miss.length})</h3>${miss.length ? `<button class="btn btn-ghost btn-sm" id="remind-ch">📩 Leur rappeler</button>` : ""}</div>
-      <div class="notice info small"><span>Pour activer son compte, chaque diffuseur doit taper le <b>code d'activation</b> que tu publies et épingles <b>dans la Chaîne</b>. Change-le de temps en temps.</span></div>
+      <div class="notice info small"><span>Pour activer son compte, chaque diffuseur doit taper le <b>code d'activation</b> que tu mets dans la <b>description de la Chaîne</b> et que tu envoies régulièrement dans la Chaîne. Change-le de temps en temps.</span></div>
       <form class="row" id="code-form" style="flex-wrap:nowrap;gap:8px"><input id="ch-code" maxlength="20" value="${esc(chCode || "")}" placeholder="Ex. : STATU1234" style="text-transform:uppercase;flex:1"><button class="btn btn-ink btn-sm">Enregistrer le code</button></form>
       ${miss.length && chCode ? `<button class="btn btn-bad btn-sm" id="reset-ch" style="align-self:flex-start">🔒 Exiger le code à tous les non vérifiés</button>` : ""}
       <div class="stack" style="gap:6px;max-height:340px;overflow:auto">${miss.map((d) => `<div class="row between small" style="flex-wrap:nowrap;gap:8px"><span style="min-width:0">${esc(d.full_name)}<span class="muted"> · ${esc(d.city || "")} · ${fcfa(d.clics)} clics</span></span>
@@ -1818,7 +1818,7 @@ async function adminDiffuseurs(body, reload) {
       <td><div class="row" style="flex-wrap:nowrap">${isAmb.has(d.id) ? "" : `<button class="btn btn-ghost btn-sm" data-amb="${d.id}">Nommer ambassadeur</button>`}<button class="btn ${d.is_blocked ? "btn-ghost" : "btn-bad"} btn-sm" data-u="${d.id}" data-b="${!d.is_blocked}">${d.is_blocked ? "Débloquer" : "Bloquer"}</button></div></td></tr>`; }).join("") || `<tr><td colspan="9" class="muted">Aucun diffuseur.</td></tr>`}
     </tbody></table></div></div>`;
   $("#code-form")?.addEventListener("submit", async (e) => { e.preventDefault(); const b = e.submitter || e.target.querySelector("button"); busy(b, true);
-    try { await rpc("admin_set_channel_code", { p_code: $("#ch-code").value }); toast("Code enregistré. Publie-le et épingle-le dans la Chaîne 📌"); reload(); } catch (err) { toast(errMsg(err), true); busy(b, false); } });
+    try { await rpc("admin_set_channel_code", { p_code: $("#ch-code").value }); toast("Code enregistré. Mets-le dans la description de la Chaîne et envoie-le dans la Chaîne 📢"); reload(); } catch (err) { toast(errMsg(err), true); busy(b, false); } });
   $("#reset-ch")?.addEventListener("click", async (e) => { const b = e.currentTarget;
     if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = `Confirmer : désactiver ${miss.length} diffuseurs tant qu'ils n'ont pas mis le code ?`; return; }
     busy(b, true); try { const n = await rpc("admin_reset_channel"); toast(`🔒 ${n} diffuseurs doivent maintenant entrer le code (message envoyé)`); reload(); } catch (err) { toast(errMsg(err), true); busy(b, false); } });
