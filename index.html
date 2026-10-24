@@ -299,6 +299,17 @@ main{padding-block:24px 64px}
 const SUPABASE_URL = "https://zqqtqopcrlxvsxvqmfjo.supabase.co";
 const SUPABASE_KEY = "sb_publishable_ELwnBEHmoxzb1NemI_nAig_YdEish0f";
 const TRACK_BASE = "https://statupub.com/";  // lien court -> 404.html -> traqueur de clics
+/* ==================== Pixel Meta (mesure des pubs Facebook / Instagram) ==================== */
+const META_PIXEL = "";
+const px = (...a) => { try { if (window.fbq) window.fbq(...a); } catch {} };
+if (META_PIXEL) {
+  !function (f, b, e, v, n, t, s) { if (f.fbq) return; n = f.fbq = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments); };
+    if (!f._fbq) f._fbq = n; n.push = n; n.loaded = !0; n.version = "2.0"; n.queue = []; t = b.createElement(e); t.async = !0; t.src = v;
+    s = b.getElementsByTagName(e)[0]; s.parentNode.insertBefore(t, s); }(window, document, "script", "https://connect.facebook.net/en_US/fbevents.js");
+  window.fbq("init", META_PIXEL);
+}
+let pxLastHash = null;
+const pxPage = () => { if (location.hash !== pxLastHash) { pxLastHash = location.hash; px("track", "PageView"); } };
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { flowType: "pkce", detectSessionInUrl: true, persistSession: true } });
 
 const state = { session: null, profile: null, settings: null };
@@ -483,7 +494,7 @@ async function loadProfile() {
 }
 
 async function route() {
-  closeModal();
+  closeModal(); pxPage();
   const h = location.hash.replace(/^#/, "") || "/";
   const [path, q] = h.split("?");
   renderNav();
@@ -733,7 +744,7 @@ function viewOnboarding() {
       p_city: $("#ob-city").value.trim(), p_country: $("#ob-country").value, p_company: $("#ob-company").value.trim(), p_ref: ref };
     if (args.p_full_name.length < 2 || args.p_phone.replace(/\D/g, "").length < 7) return toast("Nom et téléphone obligatoires", true);
     busy(btn, true);
-    try { await rpc("complete_onboarding", args); await loadProfile(); toast("Bienvenue sur StatuPub !"); location.hash = afterLogin(); route(); }
+    try { await rpc("complete_onboarding", args); px("track", "CompleteRegistration", { content_name: args.p_role, status: true }); await loadProfile(); toast("Bienvenue sur StatuPub !"); location.hash = afterLogin(); route(); }
     catch (err) { toast(errMsg(err), true); busy(btn, false); }
   };
 }
@@ -788,6 +799,11 @@ async function viewAnnonceur() {
   const totalClicks = camps.reduce((a, c) => a + Number(c.valid_clicks), 0);
   const today = camps.reduce((a, c) => a + Number(c.clicks_today), 0);
   const pend = rech.filter((r) => r.status === "en_attente" && r.method !== "paydunya");
+  // Pixel : chaque recharge validée (des 2 derniers jours) est comptée une seule fois comme achat
+  try { const seen = new Set(JSON.parse(localStorage.getItem("sp_px_rech") || "[]"));
+    rech.filter((r) => r.status === "validee" && !seen.has(r.id) && Date.now() - new Date(r.created_at) < 2 * 864e5)
+      .forEach((r) => { px("track", "Purchase", { value: r.amount, currency: "XOF", content_name: "recharge" }); seen.add(r.id); });
+    localStorage.setItem("sp_px_rech", JSON.stringify([...seen].slice(-50))); } catch {}
   app.innerHTML = `<main class="wrap">
     <div class="page-head"><div><p class="eyebrow">Espace annonceur</p><h1 style="font-size:2rem">Bonjour ${esc((state.profile.full_name || "").split(" ")[0])}</h1></div>
       <div class="row"><button class="btn btn-ghost" id="b-recharge">Recharger mon compte</button><button class="btn btn-ink" id="b-meta">📘 Facebook Ads${state.settings?.meta_enabled === false ? ` <span class="pill p-warn" style="margin-left:6px;font-size:.7rem">Bientôt</span>` : ""}</button><button class="btn btn-primary" id="b-new">Nouvelle campagne</button></div></div>
