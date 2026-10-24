@@ -1274,12 +1274,17 @@ async function renderMetaSection(available) {
       ${o.status === "en_attente" ? `<p class="small muted" style="margin:0">Notre équipe prépare ta pub. Tu seras prévenu dès qu'elle est lancée.</p>` : ""}
       ${metaRes(o.results) ? `<div class="grid g3" style="gap:10px">${metaRes(o.results)}</div>` : (o.status === "en_cours" ? `<p class="small muted" style="margin:0">Les premiers résultats apparaissent sous 24 h.</p>` : "")}
       ${o.refunded ? `<p class="small" style="margin:0;color:var(--ok)">${fcfa(o.refunded)} F non dépensés rendus sur ton solde.</p>` : ""}
+      ${["terminee", "rejetee"].includes(o.status) && state.settings?.meta_enabled !== false ? `<button class="btn btn-ghost btn-sm" data-again="${o.id}" style="align-self:flex-start">🔁 Relancer cette pub</button>` : ""}
     </article>`).join("")}</div>`
     : `<div class="card stack">${state.settings?.meta_enabled === false ? `<span class="pill p-warn" style="align-self:flex-start">Bientôt disponible</span>` : ""}<p style="margin:0"><b>Fais connaître ton business sur Facebook et Instagram, en payant par Wave ou Orange Money.</b></p><p class="small muted" style="margin:0">Pas besoin de carte bancaire : tu choisis ton budget et ta cible, on s'occupe de tout.</p></div>`}`;
   $("#b-meta2").onclick = () => metaOrderModal(available);
+  box.querySelectorAll("[data-again]").forEach((b) => b.onclick = async () => {
+    const w = await rpc("annonceur_wallet").then((r) => r[0]).catch(() => null);
+    metaOrderModal(Number(w?.available ?? available), false, data.find((x) => x.id === b.dataset.again));
+  });
 }
 
-function metaOrderModal(available, internal = false) {
+function metaOrderModal(available, internal = false, pre = null) {
   const s = state.settings || {};
   if (internal) available = 1e12;
   if (!internal && s.meta_enabled === false) return openModal(`<div class="row between"><h2>📘 Bientôt disponible</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
@@ -1329,7 +1334,20 @@ function metaOrderModal(available, internal = false) {
     $("#mo-budget", m).oninput = est;
     $("#mo-days", m).oninput = () => { fitBudget(); est(); };
     $("#mo-budget", m).onchange = () => { const d = Math.max(1, +$("#mo-days", m).value || 1); if ((+$("#mo-budget", m).value || 0) < d * perDay) toast(`Pour ${d} jour${d > 1 ? "s" : ""}, Meta demande au moins ${fcfa(Math.ceil(d * perDay / 100) * 100)} F`, true); };
-    fitBudget(); est();
+    // Relancer une ancienne pub : formulaire prérempli (mêmes visuels si on n'en choisit pas d'autres)
+    const preMedia = pre ? (pre.media_urls?.length ? pre.media_urls : [pre.media_url]).filter(Boolean) : [];
+    if (pre) {
+      $("#mo-title", m).value = pre.title || ""; $("#mo-msg", m).value = pre.message || "";
+      const r = m.querySelector(`input[name="mo-obj"][value="${pre.objective}"]`); if (r) { r.checked = true; setObj(); }
+      const wa = /statupub\.com\/wa\/\?n=(\d+)/.exec(pre.target_url || "") || /wa\.me\/(\d+)/.exec(pre.target_url || "");
+      $("#mo-link", m).value = pre.objective === "whatsapp" && wa ? wa[1] : (pre.target_url || "");
+      m.querySelectorAll('input[name="mo-c"]').forEach((x) => x.checked = (pre.countries || []).includes(x.value));
+      if ($("#mo-cities", m)) $("#mo-cities", m).value = pre.cities || "";
+      if ($("#mo-amin", m)) $("#mo-amin", m).value = pre.age_min || 18; if ($("#mo-amax", m)) $("#mo-amax", m).value = pre.age_max || 55;
+      if ($("#mo-gender", m)) $("#mo-gender", m).value = pre.gender || "tous";
+      $("#mo-days", m).value = pre.days || 7; $("#mo-budget", m).value = pre.budget || minB; fitBudget(); est();
+      if (preMedia.length) $("#mo-file", m).insertAdjacentHTML("afterend", `<span class="hint" style="color:var(--ok)">✅ ${preMedia.length} visuel${preMedia.length > 1 ? "s" : ""} de la pub précédente repris. Choisis des fichiers seulement pour les remplacer.</span>`);
+    }
     $("#mo-form", m).onsubmit = async (e) => {
       e.preventDefault(); const btn = $("#mo-btn", m);
       const title = $("#mo-title", m).value.trim(), msg = $("#mo-msg", m).value.trim(), files = [...$("#mo-file", m).files].slice(0, 3), file = files[0], o = obj();
@@ -1342,7 +1360,7 @@ function metaOrderModal(available, internal = false) {
         const d = waNumber(raw, countries[0] || state.profile?.country); link = `https://statupub.com/wa/?n=${d}&b=${encodeURIComponent(title)}`; }
       else if (!/^https?:\/\//i.test(link)) return toast("Le lien doit commencer par https://", true);
       if (msg.length < 5) return toast("Écris le texte de ta pub", true);
-      if (!file) return toast("Ajoute un visuel (image ou vidéo)", true);
+      if (!file && !preMedia.length) return toast("Ajoute un visuel (image ou vidéo)", true);
       if ($("#mo-file", m).files.length > 3) return toast("3 visuels maximum", true);
       if (files.some((f) => f.size > (/^video\//.test(f.type) ? 50 : 16) * 1024 * 1024)) return toast("Fichier trop lourd : 16 Mo max pour une image, 50 Mo pour une vidéo", true);
       if (!countries.length) return toast("Choisis au moins un pays", true);
@@ -1352,7 +1370,7 @@ function metaOrderModal(available, internal = false) {
       if (budget > available) return toast("Solde insuffisant : recharge ton compte", true);
       busy(btn, true);
       try {
-        const urls = [];
+        const urls = files.length ? [] : [...preMedia];
         for (const [i, f] of files.entries()) {
           const ext = (f.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
           const path = `${state.session.user.id}/meta-${Date.now()}-${i}.${ext}`;
