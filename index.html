@@ -955,6 +955,7 @@ async function viewCampaign(id) {
       <div class="row">
         ${c.status === "active" ? `<button class="btn btn-ghost" data-st="pause">Mettre en pause</button>` : ""}
         ${c.status === "pause" ? `<button class="btn btn-ok" data-st="active">Relancer</button>` : ""}
+        ${["active", "pause", "terminee"].includes(c.status) ? `<button class="btn ${c.status === "terminee" ? "btn-primary" : "btn-ghost"}" id="add-budget">${c.status === "terminee" ? "🔁 Relancer avec du budget" : "➕ Ajouter du budget"}</button>` : ""}
         ${["active", "pause", "en_attente"].includes(c.status) ? `<button class="btn btn-bad" id="stop">Arrêter la campagne</button>` : ""}
       </div></div>
     <div id="stop-confirm" hidden class="notice warn" style="margin-bottom:16px"><div class="stack" style="gap:10px"><span><b>Arrêter définitivement ?</b> Le budget non dépensé (${fcfa(c.budget - c.spent)} FCFA) retourne sur votre solde. Les clics suivants ne seront plus comptés.</span><div class="row"><button class="btn btn-bad btn-sm" data-st="terminee">Oui, arrêter</button><button class="btn btn-ghost btn-sm" id="stop-no">Annuler</button></div></div></div>
@@ -981,6 +982,26 @@ async function viewCampaign(id) {
   });
   $("#stop")?.addEventListener("click", () => $("#stop-confirm").hidden = false);
   $("#stop-no")?.addEventListener("click", () => $("#stop-confirm").hidden = true);
+  $("#add-budget")?.addEventListener("click", async () => {
+    const w = await rpc("annonceur_wallet").then((r) => r[0]).catch(() => null);
+    const av = Number(w?.available || 0), min = Math.max(c.cpc, 1000), reopen = c.status === "terminee";
+    openModal(`<form class="stack" id="ab-form"><div class="row between"><h2>${reopen ? "Relancer la campagne" : "Ajouter du budget"}</h2><button type="button" class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
+      <p class="small muted" style="margin:0">${reopen ? "La campagne repart avec le même texte, le même visuel et les mêmes liens : les diffuseurs qui l'ont déjà publiée sont prévenus et leurs liens marchent à nouveau." : "Le budget s'ajoute à ta campagne en cours, sans rien changer d'autre."}</p>
+      <label for="ab-amt">Montant à ajouter (FCFA)<span class="hint">Minimum ${fcfa(min)} F · Disponible sur ton solde : <b>${fcfa(av)} F</b> · ${fcfa(c.cpc)} F par clic</span><input id="ab-amt" type="number" min="${min}" step="500" value="${Math.max(min, Math.min(av, 2500))}" inputmode="numeric"></label>
+      <div class="notice ok small" id="ab-est"></div>
+      ${av < min ? `<div class="notice warn small"><span>Ton solde est trop faible. <a href="#" id="ab-rc">Recharge ton compte</a> puis reviens ici.</span></div>` : ""}
+      <button class="btn btn-primary" id="ab-btn" ${av < min ? "disabled" : ""}>${reopen ? "🔁 Relancer la campagne" : "Ajouter le budget"}</button></form>`, (m) => {
+      const est = () => { const v = +$("#ab-amt", m).value || 0; $("#ab-est", m).innerHTML = `<span>≈ <b>${fcfa(Math.floor(v / c.cpc))} clics</b> de plus.</span>`; };
+      $("#ab-amt", m).oninput = est; est();
+      $("#ab-rc", m)?.addEventListener("click", (e) => { e.preventDefault(); closeModal(); rechargeModal(); });
+      $("#ab-form", m).onsubmit = async (e) => { e.preventDefault(); const b = $("#ab-btn", m), v = parseInt($("#ab-amt", m).value, 10);
+        if (!(v >= min)) return toast(`Montant minimum : ${fcfa(min)} F`, true);
+        if (v > av) return toast("Solde insuffisant : recharge ton compte", true);
+        busy(b, true);
+        try { await rpc("add_campaign_budget", { p_id: id, p_amount: v }); closeModal(); toast(reopen ? "🔁 Campagne relancée !" : "Budget ajouté ✅"); viewCampaign(id); }
+        catch (err) { toast(errMsg(err), true); busy(b, false); } };
+    });
+  });
 }
 
 /* ==================== DIFFUSEUR ==================== */
