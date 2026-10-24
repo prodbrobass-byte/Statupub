@@ -502,6 +502,7 @@ async function route() {
   const role = state.profile?.role;
   const guard = (r) => { if (!state.profile) { try { sessionStorage.setItem("sp_after", location.hash); } catch {} state.after = location.hash; location.hash = "#/connexion"; return false; } if (role !== r) { location.hash = "#/" + role; return false; } return true; };
   if (state.profile?.needs_onboarding) return viewOnboarding();
+  if (["diffuseur", "annonceur"].includes(role) && !state.profile.source) setTimeout(sourceModal, 500);
   if (/(^|&)avis=1/.test(q || "")) state.focusReview = true;
   if (/(^|&)chat=1/.test(q || "") && state.profile) setTimeout(() => { if (canChat() && !chat.open) openChat(); }, 600);
   try {
@@ -714,6 +715,29 @@ function viewAuth(mode, roleParam) {
       await loadProfile();
       location.hash = afterLogin();
     } catch (err) { toast(errMsg(err), true); busy(btn, false); }
+  };
+}
+
+/* ==================== Question obligatoire : comment as-tu connu StatuPub ? ==================== */
+const SOURCES = ["Live TikTok", "Vidéo TikTok", "Facebook", "Instagram", "Pub Facebook / Instagram", "Statut WhatsApp", "Groupe ou Chaîne WhatsApp", "Un ami / parrainage", "Recherche Google", "Autre"];
+function sourceModal() {
+  if (!state.profile || state.profile.source || $("#src-form")) return;
+  const root = $("#modal-root");
+  root.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="src-t"><div class="card stack"><form class="stack" id="src-form">
+    <div><p class="eyebrow">Une petite question 🙏</p><h2 id="src-t" style="margin-top:6px">Comment as-tu connu StatuPub ?</h2><p class="small muted" style="margin-top:6px">Ça nous aide à savoir où te retrouver. Une seule réponse, une seule fois.</p></div>
+    <div class="grid g2" style="gap:8px">${SOURCES.map((x) => `<label class="check card flat" style="padding:10px 12px"><input type="radio" name="src" value="${esc(x)}"><span>${esc(x)}</span></label>`).join("")}</div>
+    <label for="src-other" id="src-other-w" hidden>Précise<input id="src-other" maxlength="50" placeholder="Ex. : un affichage, une radio…"></label>
+    <button class="btn btn-primary" id="src-btn">Valider</button></form></div></div>`;
+  const m = root.firstElementChild;
+  m.querySelectorAll('input[name="src"]').forEach((r) => r.onchange = () => { $("#src-other-w", m).hidden = r.value !== "Autre"; });
+  $("#src-form", m).onsubmit = async (e) => {
+    e.preventDefault();
+    const v = m.querySelector('input[name="src"]:checked')?.value;
+    if (!v) return toast("Choisis une réponse", true);
+    const val = v === "Autre" ? ("Autre : " + ($("#src-other", m).value.trim() || "non précisé")) : v;
+    const b = $("#src-btn", m); busy(b, true);
+    try { await rpc("set_my_source", { p_source: val }); state.profile.source = val; root.innerHTML = ""; toast("Merci ! 🙌"); }
+    catch (err) { toast(errMsg(err), true); busy(b, false); }
   };
 }
 
@@ -1770,14 +1794,28 @@ async function adminPaid(body, reload) {
 }
 
 async function adminDiffuseurs(body, reload) {
-  const [rows, ambs] = await Promise.all([rpc("admin_diffuseurs"), rpc("admin_ambassadors")]);
+  const [rows, ambs, srcs, miss] = await Promise.all([rpc("admin_diffuseurs"), rpc("admin_ambassadors"), rpc("admin_sources").catch(() => []), rpc("admin_channel_missing").catch(() => [])]);
   const isAmb = new Set(ambs.map((a) => a.id));
-  body.innerHTML = `<div class="stack"><p class="small muted">Triés par nombre de clics bloqués. Un diffuseur avec beaucoup de clics bloqués, ou plus de clics que de vues, est suspect.</p>
+  const ss = state.settings || {};
+  const totSrc = srcs.reduce((x, r) => x + Number(r.total), 0) || 1;
+  const extra = `<div class="grid g2" style="margin-bottom:8px">
+    <div class="card stack"><h3>Comment ils ont connu StatuPub</h3><p class="small muted" style="margin:0">Diffuseurs et annonceurs · la question est obligatoire à la prochaine visite.</p>
+      ${srcs.map((r) => `<div class="stack" style="gap:4px"><div class="row between small"><span>${esc(r.source)}</span><span><b>${fcfa(r.total)}</b> <span class="muted">· ${fcfa(r.diffuseurs)} diff. · ${fcfa(r.annonceurs)} ann. · ${fcfa(r.cette_semaine)} cette sem.</span></span></div><div class="bar"><i style="width:${Math.round(r.total / totSrc * 100)}%"></i></div></div>`).join("") || `<div class="empty small">Pas encore de réponses.</div>`}
+    </div>
+    <div class="card stack"><div class="row between"><h3>Pas abonnés à la Chaîne (${miss.length})</h3>${miss.length ? `<button class="btn btn-primary btn-sm" id="remind-ch">📩 Leur rappeler</button>` : ""}</div>
+      <p class="small muted" style="margin:0">Diffuseurs qui n'ont pas coché « Je suis abonné(e) ». WhatsApp ne permet pas de voir qui suit une chaîne : c'est leur réponse dans StatuPub qui compte.</p>
+      <div class="stack" style="gap:6px;max-height:340px;overflow:auto">${miss.map((d) => `<div class="row between small" style="flex-wrap:nowrap;gap:8px"><span style="min-width:0">${esc(d.full_name)}<span class="muted"> · ${esc(d.city || "")} · ${fcfa(d.clics)} clics</span></span>
+        <a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="https://wa.me/${waNumber(d.phone, d.country)}?text=${encodeURIComponent(`Salut ${String(d.full_name || "").split(" ")[0]} 👋 C'est l'équipe StatuPub. Abonne-toi à notre Chaîne WhatsApp pour recevoir les nouvelles campagnes en premier : ${ss.whatsapp_channel_url || "statupub.com"} puis coche « Je suis abonné(e) » dans ton espace. Merci 🙏`)}">📲 WhatsApp</a></div>`).join("") || `<div class="empty small">Tout le monde est abonné 👍</div>`}</div>
+    </div></div>`;
+  body.innerHTML = extra + `<div class="stack"><p class="small muted">Triés par nombre de clics bloqués. Un diffuseur avec beaucoup de clics bloqués, ou plus de clics que de vues, est suspect.</p>
     <div class="table"><table><thead><tr><th>Diffuseur</th><th>Ville</th><th class="n">Vues moy.</th><th class="n">Clics valides</th><th class="n">Bloqués</th><th class="n">Aujourd'hui</th><th class="n">Gains</th><th>Chaîne</th><th></th></tr></thead><tbody>
     ${rows.map((d) => { const tot = Number(d.valid_clicks) + Number(d.invalid_clicks); const susp = (tot > 10 && d.invalid_clicks / tot > 0.4) || (d.avg_views > 0 && d.clicks_today > d.avg_views * 0.5);
       return `<tr><td>${esc(d.full_name)}<div class="small muted num">${esc(d.phone)}</div>${susp ? `<span class="pill p-bad">Suspect</span>` : ""}${d.is_blocked ? `<span class="pill p-mute">Bloqué</span>` : ""}${isAmb.has(d.id) ? `<span class="pill p-info">Ambassadeur</span>` : ""}</td><td>${esc(d.city)}</td><td class="n">${fcfa(d.avg_views)}</td><td class="n">${fcfa(d.valid_clicks)}</td><td class="n">${fcfa(d.invalid_clicks)}</td><td class="n">${fcfa(d.clicks_today)}</td><td class="n">${fcfa(d.earnings)}</td><td>${d.channel_joined ? "Oui" : "Non"}</td>
       <td><div class="row" style="flex-wrap:nowrap">${isAmb.has(d.id) ? "" : `<button class="btn btn-ghost btn-sm" data-amb="${d.id}">Nommer ambassadeur</button>`}<button class="btn ${d.is_blocked ? "btn-ghost" : "btn-bad"} btn-sm" data-u="${d.id}" data-b="${!d.is_blocked}">${d.is_blocked ? "Débloquer" : "Bloquer"}</button></div></td></tr>`; }).join("") || `<tr><td colspan="9" class="muted">Aucun diffuseur.</td></tr>`}
     </tbody></table></div></div>`;
+  $("#remind-ch")?.addEventListener("click", async (e) => { const b = e.currentTarget;
+    if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = `Confirmer : envoyer à ${miss.length} ?`; return; }
+    busy(b, true); try { const n = await rpc("admin_remind_channel"); toast(`📩 Rappel envoyé à ${n} diffuseur${n > 1 ? "s" : ""}`); } catch (err) { toast(errMsg(err), true); } busy(b, false); b.textContent = "✅ Envoyé"; b.disabled = true; });
   body.querySelectorAll("[data-amb]").forEach((b) => b.onclick = async () => { busy(b, true); try { const code = await rpc("admin_set_ambassador", { p_user: b.dataset.amb, p_on: true }); toast("Ambassadeur nommé · code " + code); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } });
   body.querySelectorAll("[data-u]").forEach((b) => b.onclick = async () => { busy(b, true); try { await rpc("admin_set_blocked", { p_user: b.dataset.u, p_blocked: b.dataset.b === "true" }); toast("Mis à jour"); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } });
 }
