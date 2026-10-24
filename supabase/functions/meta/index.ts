@@ -149,6 +149,8 @@ async function sync() {
       const res = await insights(o.meta_campaign_id);
       const issue = await adIssues(o.meta_campaign_id).catch(() => null);
       await sb.from("meta_orders").update({ results: res, last_error: issue }).eq("id", o.id);
+      // Première diffusion constatée → message + notification à l'annonceur (une seule fois)
+      if (!o.live_notified_at && res.impressions > 0) await sb.rpc("meta_order_live", { p_id: o.id });
       // Sécurité : budget du client atteint → on coupe chez Meta tout de suite
       if (res.spend >= o.ad_budget * 0.97) { await g(o.meta_campaign_id, { status: "PAUSED" }, "POST").catch(() => {}); await finish(o, res); }
       else if (o.ends_at && new Date(o.ends_at).getTime() + 3 * 36e5 < Date.now()) await finish(o, res);
