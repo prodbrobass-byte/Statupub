@@ -1295,7 +1295,7 @@ function metaOrderModal(available, internal = false) {
     $("#mo-rc", m)?.addEventListener("click", rechargeModal);
     const obj = () => m.querySelector('input[name="mo-obj"]:checked').value;
     const setObj = () => { const o = obj(); $("#mo-link-l", m).textContent = o === "whatsapp" ? "Ton numéro WhatsApp" : o === "site" ? "Lien de ton site" : "Lien de ta page Facebook ou Instagram";
-      $("#mo-link-h", m).textContent = o === "whatsapp" ? "Avec l'indicatif, ex. : 221771234567" : "Doit commencer par https://";
+      $("#mo-link-h", m).textContent = o === "whatsapp" ? "Ex. : 771234567 (l'indicatif du pays est ajouté automatiquement)" : "Doit commencer par https://";
       $("#mo-link", m).placeholder = o === "whatsapp" ? "221771234567" : "https://"; $("#mo-link", m).inputMode = o === "whatsapp" ? "tel" : "url"; };
     m.querySelectorAll('input[name="mo-obj"]').forEach((r) => r.onchange = setObj);
     if (internal) { m.querySelector('input[name="mo-obj"][value="site"]').checked = true; setObj(); $("#mo-link", m).value = "https://statupub.com"; $("#mo-budget", m).value = 10000; $("#mo-days", m).value = 5; }
@@ -1316,7 +1316,9 @@ function metaOrderModal(available, internal = false) {
       const countries = [...m.querySelectorAll('input[name="mo-c"]:checked')].map((x) => x.value);
       const budget = parseInt($("#mo-budget", m).value, 10), days = parseInt($("#mo-days", m).value, 10);
       if (title.length < 3) return toast("Donne un nom à ta pub", true);
-      if (o === "whatsapp") { const d = link.replace(/\D/g, ""); if (d.length < 8) return toast("Indique ton numéro WhatsApp avec l'indicatif", true); link = "https://wa.me/" + d; }
+      if (o === "whatsapp") { const raw = link.replace(/\D/g, ""); if (raw.length < 8) return toast("Indique ton numéro WhatsApp", true);
+        // Meta refuse les pubs « site » qui pointent directement vers wa.me : on passe par une page StatuPub avec un bouton WhatsApp
+        const d = waNumber(raw, countries[0] || state.profile?.country); link = `https://statupub.com/wa/?n=${d}&b=${encodeURIComponent(title)}`; }
       else if (!/^https?:\/\//i.test(link)) return toast("Le lien doit commencer par https://", true);
       if (msg.length < 5) return toast("Écris le texte de ta pub", true);
       if (!file) return toast("Ajoute un visuel (image ou vidéo)", true);
