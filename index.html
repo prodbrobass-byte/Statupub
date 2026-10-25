@@ -1344,6 +1344,7 @@ function metaOrderModal(available, internal = false, pre = null) {
         ${Object.entries(META_OBJ).map(([k, l], i) => `<label style="flex-direction:row;align-items:center;gap:10px;font-weight:500"><input type="radio" name="mo-obj" value="${k}" ${i === 0 ? "checked" : ""} style="width:auto">${l}${k === "whatsapp" ? ` <span class="small muted">(recommandé : les clients t'écrivent directement)</span>` : ""}</label>`).join("")}</fieldset>
       <label for="mo-link"><span id="mo-link-l">Ton numéro WhatsApp</span><span class="hint" id="mo-link-h">Avec l'indicatif, ex. : 221771234567</span><input id="mo-link" inputmode="tel" placeholder="221771234567"></label>
       <label for="mo-msg">Texte de la pub<span class="hint">Court et clair : l'offre, le prix, ce qu'il faut faire.</span><textarea id="mo-msg" maxlength="1000" rows="4" placeholder="🐑 -20 % sur tous les boubous jusqu'à dimanche ! Livraison gratuite à Dakar. Écris-nous sur WhatsApp 👇"></textarea></label>
+      <div id="mo-check" class="stack small" style="gap:4px;margin-top:-6px"></div>
       <label for="mo-file">Visuels : images ou vidéos (1 à 3)<span class="hint">🎬 La vidéo marche le mieux : courte (6 à 30 s), verticale ou carrée, le produit dès la 1re seconde. Tu peux mélanger images et vidéos : Meta montre davantage celle qui marche. Images JPG/PNG 16 Mo max, vidéos MP4 ou MOV 50 Mo max.</span><input id="mo-file" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"></label>
       <fieldset style="border:none;padding:0;margin:0"><legend class="small" style="font-weight:600;margin-bottom:6px">Pays visés</legend>
         <div class="row" style="gap:6px">${Object.entries(META_COUNTRIES).map(([k, n]) => `<label style="flex-direction:row;align-items:center;gap:6px;font-weight:500;border:1px solid var(--line);border-radius:999px;padding:6px 12px"><input type="checkbox" name="mo-c" value="${k}" ${k === (state.profile.country || "SN") ? "checked" : ""} style="width:auto">${n}</label>`).join("")}</div></fieldset>
@@ -1357,6 +1358,17 @@ function metaOrderModal(available, internal = false, pre = null) {
         <label for="mo-days">Durée (jours)<input id="mo-days" type="number" min="1" max="60" value="7" inputmode="numeric"></label>
         <label for="mo-budget">Budget total (FCFA)<span class="hint">Minimum ${fcfa(minB)}. Disponible : ${fcfa(available)}.</span><input id="mo-budget" type="number" min="${minB}" step="1000" value="${Math.max(minB, 10000)}" inputmode="numeric"></label>
       </div>
+      <details class="card flat" style="padding:12px 14px"><summary class="small"><b>💡 Conseils pour une pub qui vend</b></summary>
+        <ul class="small stack" style="padding-left:18px;margin:10px 0 0;gap:6px">
+          <li><b>Le texte :</b> l'offre dès la 1re ligne, le <b>prix</b>, la <b>ville / livraison</b> et ce que le client doit faire (« Écris-nous sur WhatsApp 👇 »). 2 à 4 lignes suffisent.</li>
+          <li><b>La vidéo vend mieux :</b> 6 à 30 secondes, verticale ou carrée, le produit visible dès la 1re seconde, en situation (porté, utilisé, servi). Mets aussi 1 ou 2 belles photos : Meta garde celle qui marche.</li>
+          <li><b>Peu de texte sur l'image :</b> une photo nette du produit vaut mieux qu'une affiche chargée.</li>
+          <li><b>Budget et durée :</b> au moins <b>3 jours</b> et idéalement <b>1 500 F par jour ou plus</b> : Meta a besoin de quelques jours pour trouver les bons clients.</li>
+          <li><b>Ciblage :</b> ne vise pas trop petit. Une ville ou tout le pays, une tranche d'âge large (18–45 par exemple) : Meta trouve lui-même les acheteurs.</li>
+          <li><b>WhatsApp :</b> réponds vite aux messages, idéalement en moins d'une heure. Un client qui attend est un client perdu.</li>
+          <li><b>Interdit par Meta :</b> promesses d'argent facile ou garanties (« gagne 100 000 F par jour »), avant/après sur le corps, jeux d'argent, faux produits de marque, produits médicaux miracle. La pub serait refusée.</li>
+        </ul>
+      </details>
       <div class="notice ok small" id="mo-est"></div>
       <p class="small muted">Chaque pub est vérifiée par notre équipe et doit respecter les règles publicitaires de Meta. Contenus interdits : arnaques, jeux d'argent, produits illégaux, fausses promesses. Si la pub est refusée, ton budget est rendu.</p>
       <button class="btn btn-primary" id="mo-btn">Envoyer ma demande</button>
@@ -1374,6 +1386,21 @@ function metaOrderModal(available, internal = false, pre = null) {
     const perDay = Math.ceil(660 / (1 - rate));
     const fitBudget = () => { const d = Math.max(1, +$("#mo-days", m).value || 1), need = Math.max(minB, Math.ceil(d * perDay / 100) * 100), bi = $("#mo-budget", m);
       bi.min = need; if ((+bi.value || 0) < need) { bi.value = need; bi.classList.add("flash"); setTimeout(() => bi.classList.remove("flash"), 600); } };
+    // Vérification du texte en direct : conseils simples avant l'envoi
+    const RISK = /(gagne[rz]?|gagnez)\s+(de\s+l['’ ]?\s?argent|\d)|revenus?\s+(stables?|garantis?|passifs?)|argent facile|(résultats?|gains?|bénéfices?)\s+garantis?|devenez riche|sans effort|miracle|perdre\s+\d+\s*kg|maigrir|guéri[rt]|casino|paris\s+sportifs?|\bparier\b|crypto|forex|trading/i;
+    const checkMsg = () => { const t = $("#mo-msg", m).value, o = obj(), tips = [];
+      if (t.trim().length >= 5) {
+        if (RISK.test(t)) tips.push(["warn", "⚠️ Ton texte contient une promesse ou un sujet que Meta refuse souvent (argent facile, garantie, santé, paris…). Reformule pour éviter un refus."]);
+        if (!/\d/.test(t)) tips.push(["info", "💰 Ajoute le prix ou une promo (« 15 000 F », « -20 % ») : les pubs avec un prix reçoivent plus de messages."]);
+        if (o === "whatsapp" && !/whats|écri|ecri|contact|command|👇|message/i.test(t)) tips.push(["info", "👇 Dis au client quoi faire : « Écris-nous sur WhatsApp pour commander 👇 »."]);
+        if (t.length > 400) tips.push(["info", "✂️ Ton texte est long : les gens lisent surtout les 2 premières lignes. Mets l'essentiel au début."]);
+        if ((t.match(/[A-ZÀ-Ý]{5,}/g) || []).length > 3) tips.push(["info", "🔠 Évite d'écrire trop en MAJUSCULES : ça fait spam."]);
+        if (!tips.length) tips.push(["ok", "✅ Texte clair : bonne chance pour ta pub !"]);
+      }
+      $("#mo-check", m).innerHTML = tips.map(([k, x]) => `<span style="color:${k === "warn" ? "var(--bad)" : k === "ok" ? "var(--ok)" : "var(--muted)"}">${x}</span>`).join("");
+    };
+    $("#mo-msg", m).addEventListener("input", checkMsg);
+    m.querySelectorAll('input[name="mo-obj"]').forEach((r) => r.addEventListener("change", checkMsg));
     $("#mo-budget", m).oninput = est;
     $("#mo-days", m).oninput = () => { fitBudget(); est(); };
     $("#mo-budget", m).onchange = () => { const d = Math.max(1, +$("#mo-days", m).value || 1); if ((+$("#mo-budget", m).value || 0) < d * perDay) toast(`Pour ${d} jour${d > 1 ? "s" : ""}, Meta demande au moins ${fcfa(Math.ceil(d * perDay / 100) * 100)} F`, true); };
@@ -1388,7 +1415,7 @@ function metaOrderModal(available, internal = false, pre = null) {
       if ($("#mo-cities", m)) $("#mo-cities", m).value = pre.cities || "";
       if ($("#mo-amin", m)) $("#mo-amin", m).value = pre.age_min || 18; if ($("#mo-amax", m)) $("#mo-amax", m).value = pre.age_max || 55;
       if ($("#mo-gender", m)) $("#mo-gender", m).value = pre.gender || "tous";
-      $("#mo-days", m).value = pre.days || 7; $("#mo-budget", m).value = pre.budget || minB; fitBudget(); est();
+      $("#mo-days", m).value = pre.days || 7; $("#mo-budget", m).value = pre.budget || minB; fitBudget(); est(); checkMsg();
       if (preMedia.length) $("#mo-file", m).insertAdjacentHTML("afterend", `<span class="hint" style="color:var(--ok)">✅ ${preMedia.length} visuel${preMedia.length > 1 ? "s" : ""} de la pub précédente repris. Choisis des fichiers seulement pour les remplacer.</span>`);
     }
     $("#mo-form", m).onsubmit = async (e) => {
