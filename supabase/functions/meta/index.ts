@@ -6,6 +6,9 @@ import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 const G = "https://graph.facebook.com/v23.0";
 const AD = "act_1431680522500834", PAGE = "1358181967385102";
 const XOF_PER_EUR = 655.957;
+const PIXEL = "1081784291417409";
+// Indique à Meta de compter les conversions du pixel StatuPub (inscriptions, achats, contacts) pour chaque pub
+const TRACK = [{ "action.type": ["offsite_conversion"], "fb_pixel": [PIXEL] }];
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info, x-push-hook", "Access-Control-Allow-Methods": "POST, OPTIONS" };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
@@ -112,7 +115,7 @@ async function launch(id: string) {
         ? { page_id: PAGE, video_data: { video_id: as.video, image_url: as.thumb, message: o.message, title: o.title, call_to_action: { type: cta, value: { link: o.target_url } } } }
         : { page_id: PAGE, link_data: { image_hash: as.hash, link: o.target_url, message: o.message, name: o.title, call_to_action: { type: cta, value: { link: o.target_url } } } };
       const creative = await g(`${AD}/adcreatives`, { name: label, object_story_spec: spec }, "POST");
-      const ad = await g(`${AD}/ads`, { name: label, adset_id: adset.id, creative: { creative_id: creative.id }, status: "ACTIVE" }, "POST");
+      const ad = await g(`${AD}/ads`, { name: label, adset_id: adset.id, creative: { creative_id: creative.id }, status: "ACTIVE", tracking_specs: TRACK }, "POST");
       if (i === 0) { ids.creative = creative.id; ids.ad = ad.id; }
       ids[`ad${i + 1}`] = ad.id;
     }
@@ -236,6 +239,17 @@ async function resume(id: string) {
   return { ok: !errs.length && !issue, errors: errs, issue, state: await inspect(o.meta_campaign_id) };
 }
 
+// Ajoute le suivi du pixel aux pubs déjà lancées
+async function trackAll() {
+  const { data } = await sb.from("meta_orders").select("id, title, meta_ids").eq("status", "en_cours");
+  const out: string[] = [];
+  for (const o of data || []) for (const [k, v] of Object.entries((o.meta_ids || {}) as Record<string, string>)) {
+    if (!/^ad\d$/.test(k)) continue;
+    await g(v, { tracking_specs: TRACK }, "POST").then(() => out.push(`${o.title} ${k} ok`)).catch((e) => out.push(`${o.title} ${k} : ${e.message}`));
+  }
+  return { done: out };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST uniquement" }, 405);
@@ -247,6 +261,7 @@ Deno.serve(async (req) => {
       const { data: cfg } = await sb.rpc("push_config");
       if (hook !== cfg?.hook) return json({ error: "forbidden" }, 403);
       if (body.action === "inspect") return json(await inspect(body.campaign_id));
+      if (body.action === "track") return json(await trackAll());
       if (body.action === "resume") return json(await resume(body.order_id));
       if (body.action === "dryrun_video") return json(await dryrunVideo(body.url || "https://statupub.com/media/statupub-presentation.mp4"));
       return json(await sync());
