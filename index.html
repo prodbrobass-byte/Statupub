@@ -915,12 +915,14 @@ function rechargeModal() {
   });
 }
 
-function newCampaignModal(available) {
+function newCampaignModal(available, edit = null) {
   const s = state.settings || {};
+  if (edit) available = Number(available) + Number(edit.budget);
   const cpcMin = s.cpc_min || 25, minB = s.min_budget || 2500;
   openModal(`
-    <div class="row between"><h2>Nouvelle campagne</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
-    ${available < minB ? `<div class="notice warn small"><span>Votre solde (${fcfa(available)} FCFA) est inférieur au budget minimum de ${fcfa(minB)} FCFA. <button type="button" class="btn btn-ink btn-sm" id="go-rc" style="margin-top:8px">Recharger d'abord</button></span></div>` : ""}
+    <div class="row between"><h2>${edit ? "✏️ Modifier la campagne" : "Nouvelle campagne"}</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
+    ${edit ? `<div class="notice info small"><span>Tu peux modifier ta campagne tant qu'elle n'est pas validée. Une fois validée, elle ne pourra plus être changée.</span></div>` : ""}
+    ${!edit && available < minB ? `<div class="notice warn small"><span>Votre solde (${fcfa(available)} FCFA) est inférieur au budget minimum de ${fcfa(minB)} FCFA. <button type="button" class="btn btn-ink btn-sm" id="go-rc" style="margin-top:8px">Recharger d'abord</button></span></div>` : ""}
     <form id="nc-form" class="stack">
       <label for="nc-title">Nom de la campagne<span class="hint">Pour vous repérer. Les diffuseurs le voient aussi.</span><input id="nc-title" maxlength="80" placeholder="Promo Tabaski -20 %"></label>
       <label for="nc-msg">Texte de la pub<span class="hint">Le texte que les diffuseurs copieront sous le visuel. Le lien est ajouté automatiquement.</span><textarea id="nc-msg" maxlength="1000" placeholder="🐑 Tabaski approche ! -20 % sur tous les boubous chez Awa Mode, livraison gratuite à Dakar."></textarea><span class="hint" id="nc-count" style="text-align:right">0 / 1000</span></label>
@@ -932,9 +934,14 @@ function newCampaignModal(available) {
       </div>
       <div class="notice ok small" id="nc-est"></div>
       <p class="small muted">Chaque campagne est vérifiée par notre équipe avant diffusion. Contenus interdits : arnaques, jeux d'argent, contenus pour adultes, fausses promesses de gains.</p>
-      <button class="btn btn-primary" id="nc-btn">Envoyer en validation</button>
+      <button class="btn btn-primary" id="nc-btn">${edit ? "Enregistrer les modifications" : "Envoyer en validation"}</button>
     </form>`, (m) => {
     $("#go-rc", m)?.addEventListener("click", rechargeModal);
+    if (edit) {
+      $("#nc-title", m).value = edit.title || ""; $("#nc-msg", m).value = edit.message || ""; $("#nc-url", m).value = edit.target_url || "";
+      $("#nc-cpc", m).value = edit.cpc; $("#nc-budget", m).value = edit.budget;
+      if (edit.media_url) $("#nc-file", m).insertAdjacentHTML("afterend", `<span class="hint" style="color:var(--ok)">✅ Visuel actuel conservé. Choisis un fichier seulement pour le remplacer.</span>`);
+    }
     const est = () => { const c = +$("#nc-cpc", m).value || 0, b = +$("#nc-budget", m).value || 0;
       $("#nc-est", m).innerHTML = c > 0 ? `<span>Environ <b class="num">${fcfa(Math.floor(b / c))}</b> clics garantis. Le diffuseur touche <b class="num">${fcfa(Math.floor(c * (s.payout_ratio || 0.5)))}</b> FCFA par clic.</span>` : ""; };
     $("#nc-cpc", m).oninput = $("#nc-budget", m).oninput = est; est();
@@ -950,7 +957,7 @@ function newCampaignModal(available) {
       if (file && file.size > 16 * 1024 * 1024) return toast("Visuel trop lourd (16 Mo maximum)", true);
       busy(btn, true);
       try {
-        let media = "";
+        let media = edit ? null : "";
         if (file) {
           const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
           const path = `${state.session.user.id}/${Date.now()}.${ext}`;
@@ -958,8 +965,10 @@ function newCampaignModal(available) {
           if (error) throw error;
           media = sb.storage.from("creatives").getPublicUrl(path).data.publicUrl;
         }
-        await rpc("create_campaign", { p_title: title, p_message: msg, p_media_url: media, p_target_url: url, p_cpc: cpc, p_budget: budget });
-        closeModal(); toast("Campagne envoyée en validation"); viewAnnonceur();
+        if (edit) { await rpc("update_pending_campaign", { p_id: edit.id, p_title: title, p_message: msg, p_media_url: media, p_target_url: url, p_cpc: cpc, p_budget: budget });
+          closeModal(); toast("Campagne modifiée ✅"); viewCampaign(edit.id); }
+        else { await rpc("create_campaign", { p_title: title, p_message: msg, p_media_url: media, p_target_url: url, p_cpc: cpc, p_budget: budget });
+          closeModal(); toast("Campagne envoyée en validation"); viewAnnonceur(); }
       } catch (err) { toast(errMsg(err), true); busy(btn, false); }
     };
   });
@@ -980,6 +989,7 @@ async function viewCampaign(id) {
         ${c.status === "active" ? `<button class="btn btn-ghost" data-st="pause">Mettre en pause</button>` : ""}
         ${c.status === "pause" ? `<button class="btn btn-ok" data-st="active">Relancer</button>` : ""}
         ${["active", "pause", "terminee"].includes(c.status) ? `<button class="btn ${c.status === "terminee" ? "btn-primary" : "btn-ghost"}" id="add-budget">${c.status === "terminee" ? "🔁 Relancer avec du budget" : "➕ Ajouter du budget"}</button>` : ""}
+        ${c.status === "en_attente" ? `<button class="btn btn-ghost" id="edit-camp">✏️ Modifier</button>` : ""}
         ${["active", "pause", "en_attente"].includes(c.status) ? `<button class="btn btn-bad" id="stop">Arrêter la campagne</button>` : ""}
       </div></div>
     <div id="stop-confirm" hidden class="notice warn" style="margin-bottom:16px"><div class="stack" style="gap:10px"><span><b>Arrêter définitivement ?</b> Le budget non dépensé (${fcfa(c.budget - c.spent)} FCFA) retourne sur votre solde. Les clics suivants ne seront plus comptés.</span><div class="row"><button class="btn btn-bad btn-sm" data-st="terminee">Oui, arrêter</button><button class="btn btn-ghost btn-sm" id="stop-no">Annuler</button></div></div></div>
@@ -1006,6 +1016,10 @@ async function viewCampaign(id) {
   });
   $("#stop")?.addEventListener("click", () => $("#stop-confirm").hidden = false);
   $("#stop-no")?.addEventListener("click", () => $("#stop-confirm").hidden = true);
+  $("#edit-camp")?.addEventListener("click", async () => {
+    const w = await rpc("annonceur_wallet").then((r) => r[0]).catch(() => null);
+    newCampaignModal(Number(w?.available || 0), c);
+  });
   $("#add-budget")?.addEventListener("click", async () => {
     const w = await rpc("annonceur_wallet").then((r) => r[0]).catch(() => null);
     const av = Number(w?.available || 0), min = Math.max(c.cpc, 1000), reopen = c.status === "terminee";
@@ -1314,13 +1328,17 @@ async function renderMetaSection(available) {
       <div class="row between" style="flex-wrap:nowrap;align-items:flex-start"><h3 style="min-width:0;overflow-wrap:anywhere">${esc(o.title)}</h3>${metaPill(o.status)}</div>
       <p class="small muted" style="margin:0">${META_OBJ[o.objective]} · ${o.days} jour${o.days > 1 ? "s" : ""} · ${o.countries.map((c) => META_COUNTRIES[c] || c).join(", ")} · Budget ${fcfa(o.budget)} F</p>
       ${o.status === "rejetee" ? `<div class="notice warn small"><span>Refusée : ${esc(o.reject_reason || "")}. Le budget t'a été rendu.</span></div>` : ""}
-      ${o.status === "en_attente" ? `<p class="small muted" style="margin:0">Notre équipe prépare ta pub. Tu seras prévenu dès qu'elle est lancée.</p>` : ""}
+      ${o.status === "en_attente" ? `<p class="small muted" style="margin:0">Notre équipe prépare ta pub. Tu seras prévenu dès qu'elle est lancée.</p><button class="btn btn-ghost btn-sm" data-edit-mo="${o.id}" style="align-self:flex-start">✏️ Modifier</button>` : ""}
       ${metaRes(o.results) ? `<div class="grid g3" style="gap:10px">${metaRes(o.results)}</div>` : (o.status === "en_cours" ? `<p class="small muted" style="margin:0">Les premiers résultats apparaissent sous 24 h.</p>` : "")}
       ${o.refunded ? `<p class="small" style="margin:0;color:var(--ok)">${fcfa(o.refunded)} F non dépensés rendus sur ton solde.</p>` : ""}
       ${["terminee", "rejetee"].includes(o.status) && state.settings?.meta_enabled !== false ? `<button class="btn btn-ghost btn-sm" data-again="${o.id}" style="align-self:flex-start">🔁 Relancer cette pub</button>` : ""}
     </article>`).join("")}</div>`
     : `<div class="card stack">${state.settings?.meta_enabled === false ? `<span class="pill p-warn" style="align-self:flex-start">Bientôt disponible</span>` : ""}<p style="margin:0"><b>Fais connaître ton business sur Facebook et Instagram, en payant par Wave ou Orange Money.</b></p><p class="small muted" style="margin:0">Pas besoin de carte bancaire : tu choisis ton budget et ta cible, on s'occupe de tout.</p></div>`}`;
   $("#b-meta2").onclick = () => metaOrderModal(available);
+  box.querySelectorAll("[data-edit-mo]").forEach((b) => b.onclick = async () => {
+    const w = await rpc("annonceur_wallet").then((r) => r[0]).catch(() => null);
+    metaOrderModal(Number(w?.available ?? available), false, { ...data.find((x) => x.id === b.dataset.editMo), _edit: true });
+  });
   box.querySelectorAll("[data-again]").forEach((b) => b.onclick = async () => {
     const w = await rpc("annonceur_wallet").then((r) => r[0]).catch(() => null);
     metaOrderModal(Number(w?.available ?? available), false, data.find((x) => x.id === b.dataset.again));
@@ -1336,7 +1354,9 @@ function metaOrderModal(available, internal = false, pre = null) {
     <p class="small muted">Active les notifications (la 🔔 en haut) pour être prévenu dès l'ouverture.</p>
     <button class="btn btn-primary" data-close>D'accord</button>`);
   const minB = internal ? 1000 : (s.meta_min_budget || 5000), rate = internal ? 0 : Number(s.meta_commission ?? 0.15);
-  openModal(`<div class="row between"><h2>${internal ? "📣 Pub StatuPub (interne)" : "📘 Facebook Ads"}</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
+  const editing = !!pre?._edit;
+  if (editing) available = Number(available) + Number(pre.budget);
+  openModal(`<div class="row between"><h2>${editing ? "✏️ Modifier ma Facebook Ads" : internal ? "📣 Pub StatuPub (interne)" : "📘 Facebook Ads"}</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
     ${available < minB ? `<div class="notice warn small"><span>Ton solde (${fcfa(available)} F) est inférieur au budget minimum de ${fcfa(minB)} F. <button type="button" class="btn btn-ink btn-sm" id="mo-rc" style="margin-top:8px">Recharger d'abord</button></span></div>` : ""}
     <form id="mo-form" class="stack">
       <label for="mo-title">Nom de la pub<input id="mo-title" maxlength="80" placeholder="Promo Tabaski boutique Awa"></label>
@@ -1371,7 +1391,8 @@ function metaOrderModal(available, internal = false, pre = null) {
       </details>
       <div class="notice ok small" id="mo-est"></div>
       <p class="small muted">Chaque pub est vérifiée par notre équipe et doit respecter les règles publicitaires de Meta. Contenus interdits : arnaques, jeux d'argent, produits illégaux, fausses promesses. Si la pub est refusée, ton budget est rendu.</p>
-      <button class="btn btn-primary" id="mo-btn">Envoyer ma demande</button>
+      ${editing ? `<div class="notice info small"><span>Tu peux modifier ta pub tant qu'elle n'est pas lancée. Une fois lancée, elle ne pourra plus être changée.</span></div>` : ""}
+      <button class="btn btn-primary" id="mo-btn">${editing ? "Enregistrer les modifications" : "Envoyer ma demande"}</button>
     </form>`, (m) => {
     $("#mo-rc", m)?.addEventListener("click", rechargeModal);
     const obj = () => m.querySelector('input[name="mo-obj"]:checked').value;
@@ -1416,7 +1437,7 @@ function metaOrderModal(available, internal = false, pre = null) {
       if ($("#mo-amin", m)) $("#mo-amin", m).value = pre.age_min || 18; if ($("#mo-amax", m)) $("#mo-amax", m).value = pre.age_max || 55;
       if ($("#mo-gender", m)) $("#mo-gender", m).value = pre.gender || "tous";
       $("#mo-days", m).value = pre.days || 7; $("#mo-budget", m).value = pre.budget || minB; fitBudget(); est(); checkMsg();
-      if (preMedia.length) $("#mo-file", m).insertAdjacentHTML("afterend", `<span class="hint" style="color:var(--ok)">✅ ${preMedia.length} visuel${preMedia.length > 1 ? "s" : ""} de la pub précédente repris. Choisis des fichiers seulement pour les remplacer.</span>`);
+      if (preMedia.length) $("#mo-file", m).insertAdjacentHTML("afterend", `<span class="hint" style="color:var(--ok)">✅ ${preMedia.length} visuel${preMedia.length > 1 ? "s" : ""} ${editing ? "actuel" + (preMedia.length > 1 ? "s" : "") + " conservé" + (preMedia.length > 1 ? "s" : "") : "de la pub précédente repris"}. Choisis des fichiers seulement pour les remplacer.</span>`);
     }
     $("#mo-form", m).onsubmit = async (e) => {
       e.preventDefault(); const btn = $("#mo-btn", m);
@@ -1449,6 +1470,12 @@ function metaOrderModal(available, internal = false, pre = null) {
           urls.push(sb.storage.from("creatives").getPublicUrl(path).data.publicUrl);
         }
         const media = urls[0];
+        if (editing) {
+          await rpc("update_pending_meta_order", { p_id: pre.id, p_title: title, p_objective: o, p_message: msg, p_target_url: link, p_countries: countries,
+            p_cities: $("#mo-cities", m).value.trim(), p_age_min: +$("#mo-amin", m).value || 18, p_age_max: +$("#mo-amax", m).value || 65, p_gender: $("#mo-gender", m).value,
+            p_days: days, p_budget: budget, p_media_urls: files.length ? urls : null });
+          closeModal(); toast("Pub modifiée ✅"); viewAnnonceur(); return;
+        }
         await rpc(internal ? "admin_create_meta_order" : "create_meta_order", { p_title: title, p_objective: o, p_message: msg, p_media_url: media, p_target_url: link, p_countries: countries,
           p_cities: $("#mo-cities", m).value.trim(), p_age_min: +$("#mo-amin", m).value || 18, p_age_max: +$("#mo-amax", m).value || 65, p_gender: $("#mo-gender", m).value, p_days: days, p_budget: budget }).then(async (id) => { if (urls.length > 1) await rpc("set_meta_order_media", { p_id: id, p_urls: urls }); return id; });
         closeModal(); if (internal) { toast("Pub StatuPub créée : clique sur « Lancer automatiquement »"); viewAdmin("meta"); } else { toast("Demande envoyée ! On prépare ta Facebook Ads 🚀"); viewAnnonceur(); }
