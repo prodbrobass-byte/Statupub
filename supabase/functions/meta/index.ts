@@ -129,9 +129,14 @@ async function launch(id: string) {
 }
 
 async function insights(campaignId: string) {
-  const r = await g(`${campaignId}/insights`, { fields: "reach,impressions,inline_link_clicks,spend", date_preset: "maximum" });
+  const r = await g(`${campaignId}/insights`, { fields: "reach,impressions,inline_link_clicks,spend,actions", date_preset: "maximum" });
   const d = r.data?.[0] || {};
-  return { reach: +d.reach || 0, impressions: +d.impressions || 0, clicks: +d.inline_link_clicks || 0, spend: Math.round((+d.spend || 0) * XOF_PER_EUR) };
+  // Conversions du pixel (même événement sous plusieurs noms : on garde le plus grand, sans additionner)
+  const act = (types: string[]) => (d.actions || []).filter((a: any) => types.includes(a.action_type)).reduce((x: number, a: any) => Math.max(x, +a.value || 0), 0);
+  return { reach: +d.reach || 0, impressions: +d.impressions || 0, clicks: +d.inline_link_clicks || 0, spend: Math.round((+d.spend || 0) * XOF_PER_EUR),
+    signups: act(["offsite_conversion.fb_pixel_complete_registration", "complete_registration", "omni_complete_registration"]),
+    purchases: act(["offsite_conversion.fb_pixel_purchase", "purchase", "omni_purchase"]),
+    messages: act(["offsite_conversion.fb_pixel_contact", "contact", "contact_total", "omni_contact"]) };
 }
 
 async function finish(o: any, res: any) {
