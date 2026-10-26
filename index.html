@@ -768,7 +768,7 @@ function viewOnboarding() {
       p_city: $("#ob-city").value.trim(), p_country: $("#ob-country").value, p_company: $("#ob-company").value.trim(), p_ref: ref };
     if (args.p_full_name.length < 2 || args.p_phone.replace(/\D/g, "").length < 7) return toast("Nom et téléphone obligatoires", true);
     busy(btn, true);
-    try { await rpc("complete_onboarding", args); px("track", "CompleteRegistration", { content_name: args.p_role, status: true }); await loadProfile(); toast("Bienvenue sur StatuPub !"); location.hash = afterLogin(); route(); }
+    try { await rpc("complete_onboarding", args); px("track", "CompleteRegistration", { content_name: args.p_role, status: true }, { eventID: "reg_" + state.session?.user?.id }); await loadProfile(); toast("Bienvenue sur StatuPub !"); location.hash = afterLogin(); route(); }
     catch (err) { toast(errMsg(err), true); busy(btn, false); }
   };
 }
@@ -826,7 +826,7 @@ async function viewAnnonceur() {
   // Pixel : chaque recharge validée (des 2 derniers jours) est comptée une seule fois comme achat
   try { const seen = new Set(JSON.parse(localStorage.getItem("sp_px_rech") || "[]"));
     rech.filter((r) => r.status === "validee" && !seen.has(r.id) && Date.now() - new Date(r.created_at) < 2 * 864e5)
-      .forEach((r) => { px("track", "Purchase", { value: r.amount, currency: "XOF", content_name: "recharge" }); seen.add(r.id); });
+      .forEach((r) => { px("track", "Purchase", { value: r.amount, currency: "XOF", content_name: "recharge" }, { eventID: "rech_" + r.id }); seen.add(r.id); });
     localStorage.setItem("sp_px_rech", JSON.stringify([...seen].slice(-50))); } catch {}
   app.innerHTML = `<main class="wrap">
     <div class="page-head"><div><p class="eyebrow">Espace annonceur</p><h1 style="font-size:2rem">Bonjour ${esc((state.profile.full_name || "").split(" ")[0])}</h1></div>

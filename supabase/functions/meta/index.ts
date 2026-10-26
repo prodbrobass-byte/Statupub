@@ -250,6 +250,25 @@ async function trackAll() {
   return { done: out };
 }
 
+// Diagnostic pixel : événements reçus par Meta + actions remontées par les pubs
+async function pixelCheck() {
+  const since = Math.floor(Date.now() / 1000) - 3 * 86400;
+  const [info, stats, linked] = await Promise.all([
+    g(PIXEL, { fields: "name,last_fired_time,is_unavailable,data_use_setting,owner_business" }).catch((e) => ({ err: e.message })),
+    g(`${PIXEL}/stats`, { aggregation: "event", start_time: since }).catch((e) => ({ err: e.message })),
+    g(`${AD}/adspixels`, { fields: "id,name" }).catch((e) => ({ err: e.message })),
+  ]);
+  const { data } = await sb.from("meta_orders").select("title, meta_campaign_id").eq("status", "en_cours");
+  const actions: Record<string, unknown> = {};
+  for (const o of data || []) {
+    const r = await g(`${o.meta_campaign_id}/insights`, { fields: "actions", date_preset: "maximum" }).catch((e) => ({ err: e.message }));
+    actions[o.title] = (r as any).err || ((r as any).data?.[0]?.actions || []).map((a: any) => `${a.action_type}=${a.value}`);
+  }
+  const ev: Record<string, number> = {};
+  for (const b of (stats as any).data || []) for (const x of b.data || []) ev[x.value] = (ev[x.value] || 0) + (+x.count || 0);
+  return { info, events_3_jours: Object.keys(ev).length ? ev : stats, linked, actions };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST uniquement" }, 405);
@@ -262,6 +281,7 @@ Deno.serve(async (req) => {
       if (hook !== cfg?.hook) return json({ error: "forbidden" }, 403);
       if (body.action === "inspect") return json(await inspect(body.campaign_id));
       if (body.action === "track") return json(await trackAll());
+      if (body.action === "pixel") return json(await pixelCheck());
       if (body.action === "resume") return json(await resume(body.order_id));
       if (body.action === "dryrun_video") return json(await dryrunVideo(body.url || "https://statupub.com/media/statupub-presentation.mp4"));
       return json(await sync());
