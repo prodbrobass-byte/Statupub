@@ -105,7 +105,7 @@ async function launch(id: string) {
     if (o.gender === "hommes") targeting.genders = [1];
     if (o.gender === "femmes") targeting.genders = [2];
     const adset = await g(`${AD}/adsets`, { name, campaign_id: camp.id, lifetime_budget: eurCents, start_time: start.toISOString(), end_time: end.toISOString(),
-      billing_event: "IMPRESSIONS", optimization_goal: "LINK_CLICKS", bid_strategy: "LOWEST_COST_WITHOUT_CAP", destination_type: "WEBSITE", targeting, status: "PAUSED" }, "POST");
+      billing_event: "IMPRESSIONS", optimization_goal: "LANDING_PAGE_VIEWS", bid_strategy: "LOWEST_COST_WITHOUT_CAP", destination_type: "WEBSITE", targeting, status: "PAUSED" }, "POST");
     ids.adset = adset.id;
     // 4-5. Un visuel = une pub (même budget partagé : Meta privilégie la meilleure)
     const cta = o.objective === "site" ? "SHOP_NOW" : "LEARN_MORE";
@@ -139,7 +139,9 @@ async function insights(campaignId: string) {
   return { reach: +d.reach || 0, impressions: +d.impressions || 0, clicks: +d.inline_link_clicks || 0, spend: Math.round((+d.spend || 0) * XOF_PER_EUR),
     signups: act(["offsite_conversion.fb_pixel_complete_registration", "complete_registration", "omni_complete_registration"]),
     purchases: act(["offsite_conversion.fb_pixel_purchase", "purchase", "omni_purchase"]),
-    messages: act(["offsite_conversion.fb_pixel_contact", "contact", "contact_total", "omni_contact"]) };
+    // Meta range parfois l'événement Contact de la page WhatsApp en « conversion personnalisée »
+    messages: act(["offsite_conversion.fb_pixel_contact", "contact", "contact_total", "omni_contact", "offsite_conversion.fb_pixel_custom"]),
+    visits: act(["landing_page_view", "omni_landing_page_view"]) };
 }
 
 async function finish(o: any, res: any) {

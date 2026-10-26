@@ -51,7 +51,18 @@ fbq("init","1081784291417409");fbq("track","PageView");
     return;
   }
   go.href = "https://wa.me/" + n + "?text=" + encodeURIComponent(m);
-  go.addEventListener("click", function () { try { fbq("track", "Contact"); } catch (e) {} });
+  // Compteur StatuPub (indépendant de Meta) : 1 vue et 1 contact au plus par personne et par jour
+  var vid = "";
+  try { vid = localStorage.getItem("sp_vid") || ""; if (!vid) { vid = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()); localStorage.setItem("sp_vid", vid); } } catch (e) { vid = String(Math.random()).slice(2) + Date.now(); }
+  var log = function (kind) {
+    try {
+      fetch("https://zqqtqopcrlxvsxvqmfjo.supabase.co/rest/v1/rpc/log_wa_event", { method: "POST", keepalive: true,
+        headers: { "Content-Type": "application/json", apikey: "sb_publishable_ELwnBEHmoxzb1NemI_nAig_YdEish0f" },
+        body: JSON.stringify({ p_n: n, p_kind: kind, p_visitor: vid }) }).catch(function () {});
+    } catch (e) {}
+  };
+  log("view");
+  go.addEventListener("click", function () { try { fbq("track", "Contact"); } catch (e) {} log("click"); });
 })();
 </script>
 </body>

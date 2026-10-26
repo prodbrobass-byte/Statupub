@@ -1314,14 +1314,20 @@ const META_COUNTRIES = { SN: "Sénégal", CI: "Côte d'Ivoire", ML: "Mali", BF: 
 const META_OBJ = { whatsapp: "Messages WhatsApp", site: "Visites du site", page: "Page Facebook / Instagram" };
 const META_ST = { en_attente: ["En préparation", "p-warn"], en_cours: ["En diffusion", "p-ok"], terminee: ["Terminée", "p-mute"], rejetee: ["Refusée", "p-bad"] };
 const metaPill = (st) => `<span class="pill ${META_ST[st][1]}">${META_ST[st][0]}</span>`;
-const metaRes = (r = {}) => [["reach", "Personnes touchées"], ["impressions", "Affichages"], ["clicks", "Clics"], ["messages", "Contacts WhatsApp"], ["signups", "Inscriptions"], ["purchases", "Achats"], ["spend", "Dépensé (F)"]]
-  .filter(([k]) => r[k] !== undefined && r[k] !== null && r[k] !== "" && !(["messages", "signups", "purchases"].includes(k) && !Number(r[k]))).map(([k, l]) => `<div><span class="small muted">${l}</span><div class="num" style="font-weight:700">${fcfa(r[k])}</div></div>`).join("");
+// Ce que StatuPub a compté lui-même sur la page « Écrire sur WhatsApp » (1 fois par personne et par jour)
+const waProof = (w) => w && Number(w.vues) > 0 ? `<div class="notice ok" style="margin:0"><div class="stack" style="gap:4px">
+  <span>👀 <b class="num">${fcfa(w.vues)}</b> personne${w.vues > 1 ? "s ont" : " a"} ouvert ta page · 💬 <b class="num">${fcfa(w.contacts)}</b> t'${w.contacts > 1 ? "ont" : "a"} écrit sur WhatsApp</span>
+  <span class="small muted">Compté par StatuPub sur ta page de contact, une seule fois par personne et par jour. Vérifie tes discussions : ceux qui disent « je viens de votre pub » viennent d'ici.</span></div></div>` : "";
+const metaRes = (r = {}) => [["reach", "Personnes touchées"], ["impressions", "Affichages"], ["clicks", "Clics"], ["visits", "Visites de la page"], ["messages", "Contacts WhatsApp"], ["signups", "Inscriptions"], ["purchases", "Achats"], ["spend", "Dépensé (F)"]]
+  .filter(([k]) => r[k] !== undefined && r[k] !== null && r[k] !== "" && !(["visits", "messages", "signups", "purchases"].includes(k) && !Number(r[k]))).map(([k, l]) => `<div><span class="small muted">${l}</span><div class="num" style="font-weight:700">${fcfa(r[k])}</div></div>`).join("");
 
 async function renderMetaSection(available) {
   const main = app.querySelector("main"); if (!main) return;
   main.insertAdjacentHTML("beforeend", `<section id="meta-box" class="stack" style="margin-top:24px"></section>`);
   const box = $("#meta-box");
   const { data } = await sb.from("meta_orders").select("*").eq("annonceur_id", state.profile.id).order("created_at", { ascending: false }).limit(30);
+  const waIds = (data || []).filter((o) => o.objective === "whatsapp" && ["en_cours", "terminee"].includes(o.status)).map((o) => o.id);
+  const ws = Object.fromEntries((waIds.length ? await rpc("meta_wa_stats", { p_ids: waIds }).catch(() => []) : []).map((x) => [x.order_id, x]));
   if (!document.body.contains(box)) return;
   box.innerHTML = `<div class="row between"><h2>Mes Facebook Ads</h2><button class="btn btn-ghost btn-sm" id="b-meta2">${state.settings?.meta_enabled === false ? "En savoir plus" : "+ Nouvelle pub"}</button></div>
     ${data?.length ? `<div class="grid g2">${data.map((o) => `<article class="card stack">
@@ -1329,6 +1335,7 @@ async function renderMetaSection(available) {
       <p class="small muted" style="margin:0">${META_OBJ[o.objective]} · ${o.days} jour${o.days > 1 ? "s" : ""} · ${o.countries.map((c) => META_COUNTRIES[c] || c).join(", ")} · Budget ${fcfa(o.budget)} F</p>
       ${o.status === "rejetee" ? `<div class="notice warn small"><span>Refusée : ${esc(o.reject_reason || "")}. Le budget t'a été rendu.</span></div>` : ""}
       ${o.status === "en_attente" ? `<p class="small muted" style="margin:0">Notre équipe prépare ta pub. Tu seras prévenu dès qu'elle est lancée.</p><button class="btn btn-ghost btn-sm" data-edit-mo="${o.id}" style="align-self:flex-start">✏️ Modifier</button>` : ""}
+      ${waProof(ws[o.id])}
       ${metaRes(o.results) ? `<div class="grid g3" style="gap:10px">${metaRes(o.results)}</div>` : (o.status === "en_cours" ? `<p class="small muted" style="margin:0">Les premiers résultats apparaissent sous 24 h.</p>` : "")}
       ${o.refunded ? `<p class="small" style="margin:0;color:var(--ok)">${fcfa(o.refunded)} F non dépensés rendus sur ton solde.</p>` : ""}
       ${["terminee", "rejetee"].includes(o.status) && state.settings?.meta_enabled !== false ? `<button class="btn btn-ghost btn-sm" data-again="${o.id}" style="align-self:flex-start">🔁 Relancer cette pub</button>` : ""}
@@ -1488,6 +1495,8 @@ async function adminMeta(body, reload) {
   const { data, error } = await sb.from("meta_orders").select("*, profiles(full_name, company, phone)").order("created_at", { ascending: false }).limit(100);
   if (error) throw error;
   const pend = data.filter((o) => o.status === "en_attente"), live = data.filter((o) => o.status === "en_cours"), done = data.filter((o) => ["terminee", "rejetee"].includes(o.status));
+  const waIds = live.filter((o) => o.objective === "whatsapp").map((o) => o.id);
+  const ws = Object.fromEntries((waIds.length ? await rpc("meta_wa_stats", { p_ids: waIds }).catch(() => []) : []).map((x) => [x.order_id, x]));
   const com = data.filter((o) => ["en_cours", "terminee"].includes(o.status)).reduce((a, o) => a + o.commission, 0);
   const gender = { tous: "Tous", femmes: "Femmes", hommes: "Hommes" };
   const detail = (o) => `<div class="small stack" style="gap:6px">
@@ -1513,7 +1522,8 @@ async function adminMeta(body, reload) {
     <h2>En diffusion</h2>
     ${live.length ? live.map((o) => `<div class="card stack"><div class="row between"><h3>${esc(o.title)}</h3>${metaPill(o.status)}</div>
       <p class="small muted" style="margin:0">${esc(o.profiles?.company || o.profiles?.full_name || "")} · lancée le ${dateTimeFr(o.started_at)} · fin prévue le ${dateTimeFr(new Date(new Date(o.started_at).getTime() + o.days * 864e5))}${o.meta_campaign_id ? " · Meta " + esc(o.meta_campaign_id) : ""}</p>
-      <div class="grid g3" style="gap:8px">${[["reach", "Personnes touchées"], ["impressions", "Affichages"], ["clicks", "Clics"], ["messages", "Contacts WhatsApp"], ["signups", "Inscriptions"], ["purchases", "Achats"], ["spend", "Dépensé (F)"]].filter(([k]) => !["messages", "signups", "purchases"].includes(k) || Number(o.results?.[k]) > 0).map(([k, l]) => `<label for="r-${k}-${o.id}" class="small">${l}<input id="r-${k}-${o.id}" type="number" min="0" inputmode="numeric" value="${o.results?.[k] ?? ""}"></label>`).join("")}</div>
+      ${waProof(ws[o.id])}
+      <div class="grid g3" style="gap:8px">${[["reach", "Personnes touchées"], ["impressions", "Affichages"], ["clicks", "Clics"], ["visits", "Visites de la page"], ["messages", "Contacts WhatsApp"], ["signups", "Inscriptions"], ["purchases", "Achats"], ["spend", "Dépensé (F)"]].filter(([k]) => !["visits", "messages", "signups", "purchases"].includes(k) || Number(o.results?.[k]) > 0).map(([k, l]) => `<label for="r-${k}-${o.id}" class="small">${l}<input id="r-${k}-${o.id}" type="number" min="0" inputmode="numeric" value="${o.results?.[k] ?? ""}"></label>`).join("")}</div>
       ${o.last_error ? `<div class="notice warn small"><span><b>Meta :</b> ${esc(o.last_error)}</span></div>` : ""}
       ${o.meta_ids?.ad ? `<p class="small" style="margin:0">🤖 Pub automatique · résultats mis à jour toutes les heures · fin le ${dateTimeFr(o.ends_at)}</p>
       <div class="row"><button class="btn btn-ghost btn-sm" data-sync="1">🔄 Actualiser les résultats</button>${o.last_error ? `<button class="btn btn-primary btn-sm" data-resume="${o.id}">🔁 Relancer chez Meta</button>` : ""}<button class="btn btn-bad btn-sm" data-stop="${o.id}">⏹ Arrêter maintenant</button></div>`
@@ -1525,7 +1535,7 @@ async function adminMeta(body, reload) {
   $("#mo-internal").onclick = () => metaOrderModal(0, true);
   body.querySelectorAll("[data-copy]").forEach((b) => b.onclick = () => copy(b.dataset.copy, b));
   const act = async (b, args, msg) => { busy(b, true); try { await rpc("admin_meta_update", args); toast(msg); reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } };
-  const results = (id) => { const r = {}; ["reach", "impressions", "clicks", "messages", "signups", "purchases", "spend"].forEach((k) => { const el = $(`#r-${k}-${id}`); if (!el) return; const v = el.value; if (v !== "") r[k] = Math.max(0, parseInt(v, 10) || 0); }); return r; };
+  const results = (id) => { const r = {}; ["reach", "impressions", "clicks", "visits", "messages", "signups", "purchases", "spend"].forEach((k) => { const el = $(`#r-${k}-${id}`); if (!el) return; const v = el.value; if (v !== "") r[k] = Math.max(0, parseInt(v, 10) || 0); }); return r; };
   body.querySelectorAll("[data-start]").forEach((b) => b.onclick = () => act(b, { p_id: b.dataset.start, p_action: "start", p_campaign_id: $("#mc-" + b.dataset.start).value }, "Pub marquée comme lancée, l'annonceur est prévenu"));
   const metaApi = async (body) => { const { data, error } = await sb.functions.invoke("meta", { body });
     if (error) { let m = error.message; try { m = (await error.context.json()).error || m; } catch {} throw new Error(m); } if (data?.error) throw new Error(data.error); return data; };
