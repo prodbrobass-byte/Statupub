@@ -830,7 +830,7 @@ async function viewAnnonceur() {
     localStorage.setItem("sp_px_rech", JSON.stringify([...seen].slice(-50))); } catch {}
   app.innerHTML = `<main class="wrap">
     <div class="page-head"><div><p class="eyebrow">Espace annonceur</p><h1 style="font-size:2rem">Bonjour ${esc((state.profile.full_name || "").split(" ")[0])}</h1></div>
-      <div class="row"><button class="btn btn-ghost" id="b-recharge">Recharger mon compte</button><button class="btn btn-ink" id="b-meta">📘 Facebook Ads${state.settings?.meta_enabled === false ? ` <span class="pill p-warn" style="margin-left:6px;font-size:.7rem">Bientôt</span>` : ""}</button><button class="btn btn-primary" id="b-new">Nouvelle campagne</button></div></div>
+      <div class="row"><button class="btn btn-ghost" id="b-recharge">Recharger mon compte</button><button class="btn btn-ghost" id="b-aw">Retirer mon solde</button><button class="btn btn-ink" id="b-meta">📘 Facebook Ads${state.settings?.meta_enabled === false ? ` <span class="pill p-warn" style="margin-left:6px;font-size:.7rem">Bientôt</span>` : ""}</button><button class="btn btn-primary" id="b-new">Nouvelle campagne</button></div></div>
     ${pend.length ? `<div class="notice info" style="margin-bottom:16px"><div><b>${pend.length} recharge${pend.length > 1 ? "s" : ""} en cours de vérification</b><p class="small muted">Votre solde sera crédité dès que nous aurons confirmé la réception du paiement (en général sous 1 h, de 8 h à 22 h).</p></div></div>` : ""}
     <div class="grid g4" style="margin-bottom:24px">
       <div class="card wallet kpi"><span class="eyebrow">Solde disponible</span><span class="big">${fcfa(w.available)}</span><span class="small muted">FCFA pour de nouvelles campagnes</span></div>
@@ -848,6 +848,7 @@ async function viewAnnonceur() {
       </tbody></table></div>` : `<p class="muted small">Aucune recharge. Le paiement se fait par Wave ou Orange Money.</p>`}
     </div></main>`;
   $("#b-recharge").onclick = rechargeModal;
+  $("#b-aw").onclick = () => annonceurWithdrawModal();
   $("#b-new").onclick = () => newCampaignModal(w.available);
   $("#b-new2")?.addEventListener("click", () => newCampaignModal(w.available));
   $("#b-meta").onclick = () => metaOrderModal(w.available);
@@ -1039,6 +1040,39 @@ async function viewCampaign(id) {
         try { await rpc("add_campaign_budget", { p_id: id, p_amount: v }); closeModal(); toast(reopen ? "🔁 Campagne relancée !" : "Budget ajouté ✅"); viewCampaign(id); }
         catch (err) { toast(errMsg(err), true); busy(b, false); } };
     });
+  });
+}
+
+/* ==================== Retrait du solde annonceur (avec frais) ==================== */
+async function annonceurWithdrawModal() {
+  const s = state.settings || {}, p = state.profile, rate = Number(s.annonceur_withdraw_fee ?? 0.15), min = Math.max(Number(s.min_withdrawal || 1000), 1000);
+  const [w, hist] = await Promise.all([rpc("annonceur_wallet").then((r) => r[0]).catch(() => null),
+    sb.from("annonceur_withdrawals").select("*").order("created_at", { ascending: false }).limit(10).then((r) => r.data || [])]);
+  const av = Number(w?.available || 0), pend = hist.find((h) => h.status === "en_attente");
+  const pct = Math.round(rate * 100);
+  openModal(`<form class="stack" id="aw-form"><div class="row between"><h2>Retirer mon solde</h2><button type="button" class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
+    <p class="small muted" style="margin:0">Disponible : <b class="num">${fcfa(av)} F</b>. Tu peux récupérer l'argent que tu n'as pas utilisé en pub. Des frais de <b>${pct} %</b> sont retenus (frais de paiement et de traitement).</p>
+    ${pend ? `<div class="notice warn small"><span>Tu as déjà une demande en cours : ${fcfa(pend.amount)} F (tu recevras ${fcfa(pend.net)} F). On la traite au plus vite.</span></div>` : ""}
+    <label for="aw-amt">Montant à retirer de ton solde (FCFA)<span class="hint">Minimum ${fcfa(min)} F</span><input id="aw-amt" type="number" min="${min}" step="500" value="${Math.max(min, av)}" inputmode="numeric"></label>
+    <div class="notice ok small" id="aw-est"></div>
+    <div class="grid g2">
+      <label for="aw-m">Recevoir sur<select id="aw-m"><option>Wave</option><option>Orange Money</option><option>Free Money</option></select></label>
+      <label for="aw-ph">Numéro<input id="aw-ph" inputmode="tel" value="${esc(p?.phone || "")}" placeholder="771234567"></label>
+    </div>
+    <p class="small muted" style="margin:0">💡 Garder ton solde pour une prochaine campagne ne coûte rien : les frais ne s'appliquent qu'au retrait.</p>
+    <button class="btn btn-primary" id="aw-btn" ${pend || av < min ? "disabled" : ""}>Demander le retrait</button>
+    ${hist.length ? `<details><summary class="small"><b>Mes retraits</b></summary><div class="stack small" style="gap:6px;margin-top:8px">${hist.map((h) => `<div class="row between"><span>${dateTimeFr(h.created_at)} · ${fcfa(h.amount)} F → <b>${fcfa(h.net)} F</b> sur ${esc(h.method)}</span>${pill(h.status)}</div>`).join("")}</div></details>` : ""}
+  </form>`, (m) => {
+    const est = () => { const v = Math.max(0, parseInt($("#aw-amt", m).value, 10) || 0), fee = Math.ceil(v * rate);
+      $("#aw-est", m).innerHTML = `<span>Frais StatuPub (${pct} %) : <b>${fcfa(fee)} F</b> · Tu reçois : <b class="num">${fcfa(Math.max(0, v - fee))} F</b></span>`; };
+    $("#aw-amt", m).oninput = est; est();
+    $("#aw-form", m).onsubmit = async (e) => { e.preventDefault(); const b = $("#aw-btn", m), v = parseInt($("#aw-amt", m).value, 10);
+      if (!(v >= min)) return toast(`Retrait minimum : ${fcfa(min)} F`, true);
+      if (v > av) return toast("Montant supérieur à ton solde disponible", true);
+      if ($("#aw-ph", m).value.replace(/\D/g, "").length < 8) return toast("Indique ton numéro de paiement", true);
+      busy(b, true);
+      try { await rpc("request_annonceur_withdrawal", { p_amount: v, p_method: $("#aw-m", m).value, p_phone: $("#aw-ph", m).value }); closeModal(); toast("Demande envoyée ✅ Tu seras prévenu dès le paiement."); viewAnnonceur(); }
+      catch (err) { toast(errMsg(err), true); busy(b, false); } };
   });
 }
 
@@ -1826,6 +1860,20 @@ async function adminWithdrawals(body, reload) {
     catch (e) { toast(errMsg(e), true); reload(); }
   }));
   $("#pd-sync")?.addEventListener("click", async (e) => { busy(e.currentTarget, true); try { await payApi("sync"); toast("Statuts mis à jour"); } catch (err) { toast(errMsg(err), true); } reload(); });
+  // Retraits annonceurs (remboursement de solde, frais retenus)
+  const { data: aws } = await sb.from("annonceur_withdrawals").select("*, profiles(full_name, company)").order("created_at", { ascending: false }).limit(60);
+  const awP = (aws || []).filter((x) => x.status === "en_attente"), awH = (aws || []).filter((x) => x.status !== "en_attente");
+  const fees = (aws || []).filter((x) => x.status === "validee").reduce((t, x) => t + x.fee, 0);
+  const awRow = (x, act) => `<tr><td>${dateTimeFr(x.created_at)}</td><td>${esc(x.profiles?.company || x.profiles?.full_name || "")}</td><td>${esc(x.method)}</td><td class="num">${esc(x.phone)}</td><td class="n">${fcfa(x.amount)}</td><td class="n">${fcfa(x.fee)}</td><td class="n"><b>${fcfa(x.net)}</b></td><td>${act ? `<div class="row" style="flex-wrap:nowrap"><button class="btn btn-ok btn-sm" data-awok="${x.id}">Payé (${fcfa(x.net)} F)</button><button class="btn btn-bad btn-sm" data-awno="${x.id}">Refuser</button></div>` : pill(x.status)}</td></tr>`;
+  const awHead = `<thead><tr><th>Date</th><th>Annonceur</th><th>Moyen</th><th>Numéro</th><th class="n">Retiré du solde</th><th class="n">Frais</th><th class="n">À envoyer</th><th></th></tr></thead>`;
+  body.querySelector(".stack")?.insertAdjacentHTML("beforeend", `<h2 style="margin-top:18px">Retraits annonceurs (${awP.length})</h2>
+    <p class="small muted" style="margin:0">Remboursement du solde non utilisé, avec ${Math.round(Number(state.settings?.annonceur_withdraw_fee ?? 0.15) * 100)} % de frais retenus. Envoie la colonne « À envoyer » puis clique sur « Payé ». Frais encaissés : <b>${fcfa(fees)} F</b>.</p>
+    ${awP.length ? `<div class="table"><table>${awHead}<tbody>${awP.map((x) => awRow(x, true)).join("")}</tbody></table></div>` : `<div class="empty small">Aucune demande en attente.</div>`}
+    ${awH.length ? `<details><summary class="small">Historique (${awH.length})</summary><div class="table"><table>${awHead}<tbody>${awH.map((x) => awRow(x, false)).join("")}</tbody></table></div></details>` : ""}`);
+  body.querySelectorAll("[data-awok],[data-awno]").forEach((b) => b.onclick = async () => {
+    const ok = !!b.dataset.awok, id = b.dataset.awok || b.dataset.awno;
+    if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = ok ? "Confirmer : argent envoyé ?" : "Confirmer le refus ?"; return; }
+    busy(b, true); try { await rpc("admin_process_annonceur_withdrawal", { p_id: id, p_approve: ok }); toast(ok ? "Marqué payé, annonceur prévenu" : "Refusé, montant rendu au solde"); reload(); } catch (err) { toast(errMsg(err), true); busy(b, false); } });
 }
 
 const DIAL = { SN: "221", CI: "225", BJ: "229", TG: "228", ML: "223", BF: "226", CM: "237" };
