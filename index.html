@@ -1398,6 +1398,7 @@ function metaOrderModal(available, internal = false, pre = null) {
       <label for="mo-msg">Texte de la pub<span class="hint">Court et clair : l'offre, le prix, ce qu'il faut faire.</span><textarea id="mo-msg" maxlength="1000" rows="4" placeholder="🐑 -20 % sur tous les boubous jusqu'à dimanche ! Livraison gratuite à Dakar. Écris-nous sur WhatsApp 👇"></textarea></label>
       <div id="mo-check" class="stack small" style="gap:4px;margin-top:-6px"></div>
       <label for="mo-file">Visuels : images ou vidéos (1 à 3)<span class="hint">🎬 La vidéo marche le mieux : courte (6 à 30 s), verticale ou carrée, le produit dès la 1re seconde. Tu peux mélanger images et vidéos : Meta montre davantage celle qui marche. Images JPG/PNG 16 Mo max, vidéos MP4 ou MOV 50 Mo max.</span><input id="mo-file" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"></label>
+      <div id="mo-texts" class="stack" style="gap:10px"></div>
       <fieldset style="border:none;padding:0;margin:0"><legend class="small" style="font-weight:600;margin-bottom:6px">Pays visés</legend>
         <div class="row" style="gap:6px">${Object.entries(META_COUNTRIES).map(([k, n]) => `<label style="flex-direction:row;align-items:center;gap:6px;font-weight:500;border:1px solid var(--line);border-radius:999px;padding:6px 12px"><input type="checkbox" name="mo-c" value="${k}" ${k === (state.profile.country || "SN") ? "checked" : ""} style="width:auto">${n}</label>`).join("")}</div></fieldset>
       <label for="mo-cities">Villes (facultatif)<span class="hint">Laisse vide pour tout le pays. Ex. : Dakar, Thiès</span><input id="mo-cities" maxlength="200"></label>
@@ -1453,6 +1454,13 @@ function metaOrderModal(available, internal = false, pre = null) {
       $("#mo-check", m).innerHTML = tips.map(([k, x]) => `<span style="color:${k === "warn" ? "var(--bad)" : k === "ok" ? "var(--ok)" : "var(--muted)"}">${x}</span>`).join("");
     };
     $("#mo-msg", m).addEventListener("input", checkMsg);
+    // Un texte par visuel (facultatif) : sinon le texte principal est utilisé
+    const drawTexts = (names, prev = []) => {
+      const keep = [...m.querySelectorAll("[data-vt]")].map((x) => x.value);
+      $("#mo-texts", m).innerHTML = names.length > 1 ? `<p class="small" style="margin:0"><b>✍️ Un texte différent pour chaque visuel ?</b> <span class="muted">Facultatif : laisse vide pour utiliser le texte principal. Meta montre davantage le duo visuel + texte qui marche le mieux.</span></p>`
+        + names.map((n, i) => `<label for="mo-vt${i}"><span class="small">Texte du visuel ${i + 1} <span class="muted">· ${esc(n)}</span></span><textarea id="mo-vt${i}" data-vt="${i}" maxlength="1000" rows="3" placeholder="Laisse vide = texte principal">${esc(keep[i] ?? prev[i] ?? "")}</textarea></label>`).join("") : "";
+    };
+    $("#mo-file", m).addEventListener("change", () => drawTexts([...$("#mo-file", m).files].slice(0, 3).map((f) => f.name)));
     m.querySelectorAll('input[name="mo-obj"]').forEach((r) => r.addEventListener("change", checkMsg));
     $("#mo-budget", m).oninput = est;
     $("#mo-days", m).oninput = () => { fitBudget(); est(); };
@@ -1469,6 +1477,7 @@ function metaOrderModal(available, internal = false, pre = null) {
       if ($("#mo-amin", m)) $("#mo-amin", m).value = pre.age_min || 18; if ($("#mo-amax", m)) $("#mo-amax", m).value = pre.age_max || 55;
       if ($("#mo-gender", m)) $("#mo-gender", m).value = pre.gender || "tous";
       $("#mo-days", m).value = pre.days || 7; $("#mo-budget", m).value = pre.budget || minB; fitBudget(); est(); checkMsg();
+      if (preMedia.length > 1) drawTexts(preMedia.map((u, i) => (/\.(mp4|mov|webm|m4v)($|\?)/i.test(u) ? "vidéo " : "image ") + (i + 1)), pre.messages || []);
       if (preMedia.length) $("#mo-file", m).insertAdjacentHTML("afterend", `<span class="hint" style="color:var(--ok)">✅ ${preMedia.length} visuel${preMedia.length > 1 ? "s" : ""} ${editing ? "actuel" + (preMedia.length > 1 ? "s" : "") + " conservé" + (preMedia.length > 1 ? "s" : "") : "de la pub précédente repris"}. Choisis des fichiers seulement pour les remplacer.</span>`);
     }
     $("#mo-form", m).onsubmit = async (e) => {
@@ -1502,14 +1511,17 @@ function metaOrderModal(available, internal = false, pre = null) {
           urls.push(sb.storage.from("creatives").getPublicUrl(path).data.publicUrl);
         }
         const media = urls[0];
+        const texts = () => urls.length > 1 ? urls.map((_, i) => ($(`#mo-vt${i}`, m)?.value || "").trim()) : [];
         if (editing) {
           await rpc("update_pending_meta_order", { p_id: pre.id, p_title: title, p_objective: o, p_message: msg, p_target_url: link, p_countries: countries,
             p_cities: $("#mo-cities", m).value.trim(), p_age_min: +$("#mo-amin", m).value || 18, p_age_max: +$("#mo-amax", m).value || 65, p_gender: $("#mo-gender", m).value,
             p_days: days, p_budget: budget, p_media_urls: files.length ? urls : null });
+          await rpc("set_meta_order_texts", { p_id: pre.id, p_texts: texts() });
           closeModal(); toast("Pub modifiée ✅"); viewAnnonceur(); return;
         }
         await rpc(internal ? "admin_create_meta_order" : "create_meta_order", { p_title: title, p_objective: o, p_message: msg, p_media_url: media, p_target_url: link, p_countries: countries,
-          p_cities: $("#mo-cities", m).value.trim(), p_age_min: +$("#mo-amin", m).value || 18, p_age_max: +$("#mo-amax", m).value || 65, p_gender: $("#mo-gender", m).value, p_days: days, p_budget: budget }).then(async (id) => { if (urls.length > 1) await rpc("set_meta_order_media", { p_id: id, p_urls: urls }); return id; });
+          p_cities: $("#mo-cities", m).value.trim(), p_age_min: +$("#mo-amin", m).value || 18, p_age_max: +$("#mo-amax", m).value || 65, p_gender: $("#mo-gender", m).value, p_days: days, p_budget: budget }).then(async (id) => { if (urls.length > 1) await rpc("set_meta_order_media", { p_id: id, p_urls: urls });
+            if (texts().some(Boolean)) await rpc("set_meta_order_texts", { p_id: id, p_texts: texts() }); return id; });
         closeModal(); if (internal) { toast("Pub StatuPub créée : clique sur « Lancer automatiquement »"); viewAdmin("meta"); } else { toast("Demande envoyée ! On prépare ta Facebook Ads 🚀"); viewAnnonceur(); }
       } catch (err) { toast(errMsg(err), true); busy(btn, false); }
     };
@@ -1531,6 +1543,7 @@ async function adminMeta(body, reload) {
       <div><b>Durée :</b> ${o.days} j · <b>Budget pub Meta (HT) :</b> ${fcfa(o.ad_budget)} F (≈ ${fcfa(o.ad_budget / o.days)} F/jour) · <b>TVA + frais réservés :</b> ${fcfa(o.fees || 0)} F · <b>Ta commission :</b> ${fcfa(o.commission)} F</div>
     </div>
     <div class="ad-text" style="white-space:pre-wrap">${esc(o.message)}</div>
+    ${(o.messages || []).map((t, i) => t ? `<div class="small"><b>Texte du visuel ${i + 1} :</b><div class="ad-text" style="white-space:pre-wrap">${esc(t)}</div></div>` : "").join("")}
     <div class="row" style="gap:10px">${(o.media_urls?.length ? o.media_urls : [o.media_url]).filter(Boolean).map((u) => /\.(mp4|mov|webm|m4v)($|\?)/i.test(u) ? `<video src="${esc(u)}" controls playsinline style="max-width:100%;max-height:260px;border-radius:12px"></video>` : `<img src="${esc(u)}" alt="Visuel" style="max-width:${o.media_urls?.length > 1 ? "31%" : "100%"};max-height:260px;border-radius:12px;object-fit:contain">`).join("")}</div>
     <div class="row"><button class="btn btn-ghost btn-sm" data-copy="${esc(o.message)}">Copier le texte</button>${o.media_url ? `<a class="btn btn-ghost btn-sm" href="${esc(o.media_url)}" target="_blank" rel="noopener" download>Télécharger le visuel</a>` : ""}</div>`;
   body.innerHTML = `<div class="stack">

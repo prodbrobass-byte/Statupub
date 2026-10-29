@@ -112,8 +112,8 @@ async function launch(id: string) {
     for (const [i, as] of assets.entries()) {
       const label = assets.length > 1 ? `${name} · V${i + 1}` : name;
       const spec = as.kind === "video"
-        ? { page_id: PAGE, video_data: { video_id: as.video, image_url: as.thumb, message: o.message, title: o.title, call_to_action: { type: cta, value: { link: o.target_url } } } }
-        : { page_id: PAGE, link_data: { image_hash: as.hash, link: o.target_url, message: o.message, name: o.title, call_to_action: { type: cta, value: { link: o.target_url } } } };
+        ? { page_id: PAGE, video_data: { video_id: as.video, image_url: as.thumb, message: (o.messages?.[i] || "").trim() || o.message, title: o.title, call_to_action: { type: cta, value: { link: o.target_url } } } }
+        : { page_id: PAGE, link_data: { image_hash: as.hash, link: o.target_url, message: (o.messages?.[i] || "").trim() || o.message, name: o.title, call_to_action: { type: cta, value: { link: o.target_url } } } };
       const creative = await g(`${AD}/adcreatives`, { name: label, object_story_spec: spec }, "POST");
       const ad = await g(`${AD}/ads`, { name: label, adset_id: adset.id, creative: { creative_id: creative.id }, status: "ACTIVE", tracking_specs: TRACK }, "POST");
       if (i === 0) { ids.creative = creative.id; ids.ad = ad.id; }
@@ -288,14 +288,14 @@ async function recreate(id: string) {
       for (let t = 0; t < 18; t++) { const st = await g(vid, { fields: "status" }).catch(() => null); if (st?.status?.video_status === "ready") break; await new Promise((r) => setTimeout(r, 5000)); }
       const th = await g(`${vid}/thumbnails`, {}).catch(() => null);
       const thumb = (th?.data || []).find((x: any) => x.is_preferred)?.uri || th?.data?.[0]?.uri || "https://statupub.com/logo/statupub-icone-1024.png";
-      spec = { page_id: PAGE, video_data: { video_id: vid, image_url: thumb, message: o.message, title: o.title, call_to_action: { type: cta, value: { link: o.target_url } } } };
+      spec = { page_id: PAGE, video_data: { video_id: vid, image_url: thumb, message: (o.messages?.[i] || "").trim() || o.message, title: o.title, call_to_action: { type: cta, value: { link: o.target_url } } } };
     } else {
       const img = await fetch(u); if (!img.ok) throw new Error("Visuel introuvable");
       const buf = new Uint8Array(await img.arrayBuffer());
       let bin = ""; for (let k = 0; k < buf.length; k += 0x8000) bin += String.fromCharCode(...buf.subarray(k, k + 0x8000));
       const up = await g(`${AD}/adimages`, { bytes: btoa(bin) }, "POST");
       const h = (Object.values(up.images || {})[0] as any)?.hash;
-      spec = { page_id: PAGE, link_data: { image_hash: h, link: o.target_url, message: o.message, name: o.title, call_to_action: { type: cta, value: { link: o.target_url } } } };
+      spec = { page_id: PAGE, link_data: { image_hash: h, link: o.target_url, message: (o.messages?.[i] || "").trim() || o.message, name: o.title, call_to_action: { type: cta, value: { link: o.target_url } } } };
     }
     const label = `${name} · R${i + 1}`;
     const creative = await g(`${AD}/adcreatives`, { name: label, object_story_spec: spec }, "POST");
