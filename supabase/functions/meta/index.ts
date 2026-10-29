@@ -146,9 +146,9 @@ async function insights(campaignId: string) {
 
 async function finish(o: any, res: any) {
   const spend = Math.min(o.ad_budget, res.spend || 0);
-  const refund = Math.max(0, o.ad_budget - spend);
+  const refund = Math.round(Math.max(0, o.ad_budget - spend) * (o.ad_budget + (o.fees || 0)) / o.ad_budget);
   await sb.from("meta_orders").update({ status: "terminee", ended_at: new Date().toISOString(), refunded: refund, results: { ...res, spend } }).eq("id", o.id).eq("status", "en_cours");
-  await notify(o.annonceur_id, "🏁 Facebook Ads terminée", `${o.title} : ${res.reach || 0} personnes touchées, ${res.clicks || 0} clics.${refund ? ` ${refund} F non dépensés rendus sur ton solde.` : ""}`);
+  await notify(o.annonceur_id, "🏁 Facebook Ads terminée", `${o.title} : ${res.reach || 0} personnes touchées, ${res.clicks || 0} clics.${refund ? ` ${refund} F non utilisés rendus sur ton solde.` : ""}`);
 }
 
 async function sync() {

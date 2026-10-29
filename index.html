@@ -1342,8 +1342,9 @@ const metaPill = (st) => `<span class="pill ${META_ST[st][1]}">${META_ST[st][0]}
 const waProof = (w) => w && Number(w.vues) > 0 ? `<div class="notice ok" style="margin:0"><div class="stack" style="gap:4px">
   <span>👀 <b class="num">${fcfa(w.vues)}</b> personne${w.vues > 1 ? "s ont" : " a"} ouvert ta page · 💬 <b class="num">${fcfa(w.contacts)}</b> t'${w.contacts > 1 ? "ont" : "a"} écrit sur WhatsApp</span>
   <span class="small muted">Compté par StatuPub sur ta page de contact, une seule fois par personne et par jour. Vérifie tes discussions : ceux qui disent « je viens de votre pub » viennent d'ici.</span></div></div>` : "";
-const metaRes = (r = {}) => [["reach", "Personnes touchées"], ["impressions", "Affichages"], ["clicks", "Clics"], ["visits", "Visites de la page"], ["messages", "Contacts WhatsApp"], ["signups", "Inscriptions"], ["purchases", "Achats"], ["spend", "Dépensé (F)"]]
-  .filter(([k]) => r[k] !== undefined && r[k] !== null && r[k] !== "" && !(["visits", "messages", "signups", "purchases"].includes(k) && !Number(r[k]))).map(([k, l]) => `<div><span class="small muted">${l}</span><div class="num" style="font-weight:700">${fcfa(r[k])}</div></div>`).join("");
+const metaRes = (r = {}, o = null) => [["reach", "Personnes touchées"], ["impressions", "Affichages"], ["clicks", "Clics"], ["visits", "Visites de la page"], ["messages", "Contacts WhatsApp"], ["signups", "Inscriptions"], ["purchases", "Achats"], ["spend", "Dépensé (F)"]]
+  .filter(([k]) => r[k] !== undefined && r[k] !== null && r[k] !== "" && !(["visits", "messages", "signups", "purchases"].includes(k) && !Number(r[k]))).filter(([k]) => !(o && k === "spend")).map(([k, l]) => `<div><span class="small muted">${l}</span><div class="num" style="font-weight:700">${fcfa(r[k])}</div></div>`).join("")
+  + (o && Number(r.spend) > 0 && o.ad_budget ? `<div><span class="small muted">Budget utilisé</span><div class="num" style="font-weight:700">${Math.min(100, Math.round(r.spend / o.ad_budget * 100))} %</div></div>` : "");
 
 async function renderMetaSection(available) {
   const main = app.querySelector("main"); if (!main) return;
@@ -1360,8 +1361,8 @@ async function renderMetaSection(available) {
       ${o.status === "rejetee" ? `<div class="notice warn small"><span>Refusée : ${esc(o.reject_reason || "")}. Le budget t'a été rendu.</span></div>` : ""}
       ${o.status === "en_attente" ? `<p class="small muted" style="margin:0">Notre équipe prépare ta pub. Tu seras prévenu dès qu'elle est lancée.</p><button class="btn btn-ghost btn-sm" data-edit-mo="${o.id}" style="align-self:flex-start">✏️ Modifier</button>` : ""}
       ${waProof(ws[o.id])}
-      ${metaRes(o.results) ? `<div class="grid g3" style="gap:10px">${metaRes(o.results)}</div>` : (o.status === "en_cours" ? `<p class="small muted" style="margin:0">Les premiers résultats apparaissent sous 24 h.</p>` : "")}
-      ${o.refunded ? `<p class="small" style="margin:0;color:var(--ok)">${fcfa(o.refunded)} F non dépensés rendus sur ton solde.</p>` : ""}
+      ${metaRes(o.results, o) ? `<div class="grid g3" style="gap:10px">${metaRes(o.results, o)}</div>` : (o.status === "en_cours" ? `<p class="small muted" style="margin:0">Les premiers résultats apparaissent sous 24 h.</p>` : "")}
+      ${o.refunded ? `<p class="small" style="margin:0;color:var(--ok)">${fcfa(o.refunded)} F non utilisés rendus sur ton solde.</p>` : ""}
       ${["terminee", "rejetee"].includes(o.status) && state.settings?.meta_enabled !== false ? `<button class="btn btn-ghost btn-sm" data-again="${o.id}" style="align-self:flex-start">🔁 Relancer cette pub</button>` : ""}
     </article>`).join("")}</div>`
     : `<div class="card stack">${state.settings?.meta_enabled === false ? `<span class="pill p-warn" style="align-self:flex-start">Bientôt disponible</span>` : ""}<p style="margin:0"><b>Fais connaître ton business sur Facebook et Instagram, en payant par Wave ou Orange Money.</b></p><p class="small muted" style="margin:0">Pas besoin de carte bancaire : tu choisis ton budget et ta cible, on s'occupe de tout.</p></div>`}`;
@@ -1384,7 +1385,7 @@ function metaOrderModal(available, internal = false, pre = null) {
     <p class="muted">Tu pourras faire connaître ton business sur Facebook et Instagram en payant par Wave ou Orange Money, sans carte bancaire : tu choisis ton budget et ta cible, on s'occupe de tout.</p>
     <p class="small muted">Active les notifications (la 🔔 en haut) pour être prévenu dès l'ouverture.</p>
     <button class="btn btn-primary" data-close>D'accord</button>`);
-  const minB = internal ? 1000 : (s.meta_min_budget || 5000), rate = internal ? 0 : Number(s.meta_commission ?? 0.15);
+  const minB = internal ? 1000 : (s.meta_min_budget || 5000), rate = internal ? 0 : Number(s.meta_commission ?? 0.15), tax = Number(s.meta_tax ?? 0.215);
   const editing = !!pre?._edit;
   if (editing) available = Number(available) + Number(pre.budget);
   openModal(`<div class="row between"><h2>${editing ? "✏️ Modifier ma Facebook Ads" : internal ? "📣 Pub StatuPub (interne)" : "📘 Facebook Ads"}</h2><button class="btn btn-ghost btn-sm" data-close>Fermer</button></div>
@@ -1433,9 +1434,9 @@ function metaOrderModal(available, internal = false, pre = null) {
     m.querySelectorAll('input[name="mo-obj"]').forEach((r) => r.onchange = setObj);
     if (internal) { m.querySelector('input[name="mo-obj"][value="site"]').checked = true; setObj(); $("#mo-link", m).value = "https://statupub.com"; $("#mo-budget", m).value = 10000; $("#mo-days", m).value = 5; }
     const est = () => { const b = +$("#mo-budget", m).value || 0, d = Math.max(1, +$("#mo-days", m).value || 1), com = Math.round(b * rate);
-      $("#mo-est", m).innerHTML = `<span>Ta pub sera diffusée sur Facebook et Instagram pendant <b>${d} jour${d > 1 ? "s" : ""}</b>. ${internal ? "" : `Frais de gestion StatuPub : <b>${Math.round(rate * 100)} %</b> inclus. `}Ta pub s'arrête automatiquement quand ton budget est atteint.</span>`; };
+      $("#mo-est", m).innerHTML = `<span>Ta pub sera diffusée sur Facebook et Instagram pendant <b>${d} jour${d > 1 ? "s" : ""}</b>. Prix tout compris : diffusion, taxes et accompagnement StatuPub. Ta pub s'arrête automatiquement quand ton budget est atteint.</span>`; };
     // Meta exige ~1 € (656 F) par jour : si le budget est trop bas pour la durée, on le monte automatiquement
-    const perDay = Math.ceil(660 / (1 - rate));
+    const perDay = Math.ceil(660 * (1 + tax) / (1 - rate));
     const fitBudget = () => { const d = Math.max(1, +$("#mo-days", m).value || 1), need = Math.max(minB, Math.ceil(d * perDay / 100) * 100), bi = $("#mo-budget", m);
       bi.min = need; if ((+bi.value || 0) < need) { bi.value = need; bi.classList.add("flash"); setTimeout(() => bi.classList.remove("flash"), 600); } };
     // Vérification du texte en direct : conseils simples avant l'envoi
@@ -1527,7 +1528,7 @@ async function adminMeta(body, reload) {
       <div><b>Annonceur :</b> ${esc(o.profiles?.company || o.profiles?.full_name || "—")} · ${esc(o.profiles?.phone || "")}</div>
       <div><b>Objectif :</b> ${META_OBJ[o.objective]} · <b>Lien :</b> <a href="${esc(o.target_url)}" target="_blank" rel="noopener">${esc(o.target_url)}</a></div>
       <div><b>Ciblage :</b> ${o.countries.map((c) => META_COUNTRIES[c] || c).join(", ")}${o.cities ? " · " + esc(o.cities) : ""} · ${o.age_min}–${o.age_max} ans · ${gender[o.gender]}</div>
-      <div><b>Durée :</b> ${o.days} j · <b>Budget pub Meta :</b> ${fcfa(o.ad_budget)} F (≈ ${fcfa(o.ad_budget / o.days)} F/jour) · <b>Ta commission :</b> ${fcfa(o.commission)} F</div>
+      <div><b>Durée :</b> ${o.days} j · <b>Budget pub Meta (HT) :</b> ${fcfa(o.ad_budget)} F (≈ ${fcfa(o.ad_budget / o.days)} F/jour) · <b>TVA + frais réservés :</b> ${fcfa(o.fees || 0)} F · <b>Ta commission :</b> ${fcfa(o.commission)} F</div>
     </div>
     <div class="ad-text" style="white-space:pre-wrap">${esc(o.message)}</div>
     <div class="row" style="gap:10px">${(o.media_urls?.length ? o.media_urls : [o.media_url]).filter(Boolean).map((u) => /\.(mp4|mov|webm|m4v)($|\?)/i.test(u) ? `<video src="${esc(u)}" controls playsinline style="max-width:100%;max-height:260px;border-radius:12px"></video>` : `<img src="${esc(u)}" alt="Visuel" style="max-width:${o.media_urls?.length > 1 ? "31%" : "100%"};max-height:260px;border-radius:12px;object-fit:contain">`).join("")}</div>
@@ -1552,7 +1553,7 @@ async function adminMeta(body, reload) {
       ${o.meta_ids?.ad ? `<p class="small" style="margin:0">🤖 Pub automatique · résultats mis à jour toutes les heures · fin le ${dateTimeFr(o.ends_at)}</p>
       <div class="row"><button class="btn btn-ghost btn-sm" data-sync="1">🔄 Actualiser les résultats</button>${o.last_error ? `<button class="btn btn-primary btn-sm" data-resume="${o.id}">🔁 Relancer chez Meta</button>${/archiv|plus publique|2490134|modifier la publicit/i.test(o.last_error) ? `<button class="btn btn-ghost btn-sm" data-recreate="${o.id}">♻️ Recréer la pub</button>` : ""}` : ""}<button class="btn btn-bad btn-sm" data-stop="${o.id}">⏹ Arrêter maintenant</button></div>`
       : `<div class="row"><button class="btn btn-ghost btn-sm" data-res="${o.id}">Mettre à jour les résultats</button><button class="btn btn-primary btn-sm" data-fin="${o.id}">Terminer</button></div>`}
-      <p class="small muted" style="margin:0">En terminant, ce qui n'a pas été dépensé chez Meta (budget pub ${fcfa(o.ad_budget)} F − dépensé) est rendu au solde de l'annonceur. Ta commission reste acquise.</p></div>`).join("") : `<p class="small muted">Aucune pub en diffusion.</p>`}
+      <p class="small muted" style="margin:0">En terminant, la part non dépensée chez Meta (budget pub ${fcfa(o.ad_budget)} F − dépensé, avec sa TVA et ses frais réservés) est rendue au solde de l'annonceur. Ta commission reste acquise.</p></div>`).join("") : `<p class="small muted">Aucune pub en diffusion.</p>`}
     <h2>Historique</h2>
     ${done.length ? `<div class="table"><table><thead><tr><th>Date</th><th>Pub</th><th>Annonceur</th><th class="n">Budget</th><th class="n">Commission</th><th>Statut</th></tr></thead><tbody>${done.map((o) => `<tr><td>${dateTimeFr(o.created_at)}</td><td>${esc(o.title)}</td><td>${esc(o.profiles?.company || o.profiles?.full_name || "")}</td><td class="n">${fcfa(o.budget)}</td><td class="n">${o.status === "terminee" ? fcfa(o.commission) : "—"}</td><td>${metaPill(o.status)}${o.refunded ? `<div class="small muted">${fcfa(o.refunded)} F rendus</div>` : ""}</td></tr>`).join("")}</tbody></table></div>` : `<p class="small muted">Rien pour l'instant.</p>`}
   </div>`;
@@ -1579,7 +1580,7 @@ async function adminMeta(body, reload) {
   body.querySelectorAll("[data-fin]").forEach((b) => b.onclick = () => {
     const o = live.find((x) => x.id === b.dataset.fin), r = results(o.id);
     if (r.spend === undefined) return toast("Indique d'abord le montant dépensé chez Meta", true);
-    const refund = Math.max(0, o.ad_budget - r.spend);
+    const refund = Math.round(Math.max(0, o.ad_budget - r.spend) * (o.ad_budget + (o.fees || 0)) / o.ad_budget);
     if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = `Confirmer (rendre ${fcfa(refund)} F)`; return; }
     act(b, { p_id: o.id, p_action: "finish", p_results: r, p_refund: refund }, "Pub terminée");
   });
