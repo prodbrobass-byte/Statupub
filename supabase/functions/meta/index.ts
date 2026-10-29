@@ -215,10 +215,10 @@ async function inspect(campaignId: string) {
 
 // Problèmes signalés par Meta sur les pubs (refus, blocage du compte…) → affichés dans l'admin
 async function adIssues(campaignId: string) {
-  const r = await g(`${campaignId}/ads`, { fields: "name,effective_status,issues_info,ad_review_feedback" });
+  const r = await g(`${campaignId}/ads`, { fields: "name,effective_status,configured_status,issues_info,ad_review_feedback" });
   const out: string[] = [];
   for (const a of r.data || []) {
-    if (!["WITH_ISSUES", "DISAPPROVED"].includes(a.effective_status)) continue;
+    if (!["WITH_ISSUES", "DISAPPROVED"].includes(a.effective_status) || a.configured_status === "PAUSED") continue;
     const fb = a.ad_review_feedback?.global ? Object.values(a.ad_review_feedback.global)[0] : null;
     out.push(`${String(a.name).split(" · ").pop()} : ${a.issues_info?.[0]?.error_summary || fb || a.effective_status}`);
   }
