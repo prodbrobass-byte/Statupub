@@ -327,6 +327,7 @@ Deno.serve(async (req) => {
       if (body.action === "pixel") return json(await pixelCheck());
       if (body.action === "resume") return json(await resume(body.order_id));
       if (body.action === "recreate") return json(await recreate(body.order_id));
+      if (body.action === "ad_status") return json(await g(body.ad_id, { status: body.status }, "POST"));
       if (body.action === "dryrun_video") return json(await dryrunVideo(body.url || "https://statupub.com/media/statupub-presentation.mp4"));
       return json(await sync());
     }
