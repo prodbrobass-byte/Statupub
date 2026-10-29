@@ -1397,7 +1397,7 @@ function metaOrderModal(available, internal = false, pre = null) {
       <label for="mo-link"><span id="mo-link-l">Ton numéro WhatsApp</span><span class="hint" id="mo-link-h">Avec l'indicatif, ex. : 221771234567</span><input id="mo-link" inputmode="tel" placeholder="221771234567"></label>
       <label for="mo-msg">Texte de la pub<span class="hint">Court et clair : l'offre, le prix, ce qu'il faut faire.</span><textarea id="mo-msg" maxlength="1000" rows="4" placeholder="🐑 -20 % sur tous les boubous jusqu'à dimanche ! Livraison gratuite à Dakar. Écris-nous sur WhatsApp 👇"></textarea></label>
       <div id="mo-check" class="stack small" style="gap:4px;margin-top:-6px"></div>
-      <label for="mo-file">Visuels : images ou vidéos (1 à 3)<span class="hint">🎬 La vidéo marche le mieux : courte (6 à 30 s), verticale ou carrée, le produit dès la 1re seconde. Tu peux mélanger images et vidéos : Meta montre davantage celle qui marche. Images JPG/PNG 16 Mo max, vidéos MP4 ou MOV 50 Mo max.</span><input id="mo-file" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"></label>
+      <label for="mo-file">Visuels : images ou vidéos (1 à 3)<span class="hint">🎬 La vidéo marche le mieux : courte (6 à 30 s), verticale ou carrée, le produit dès la 1re seconde. Tu peux mélanger images et vidéos : Meta montre davantage celle qui marche. Images JPG/PNG 16 Mo max, vidéos MP4 ou MOV 100 Mo max.</span><input id="mo-file" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"></label>
       <div id="mo-texts" class="stack" style="gap:10px"></div>
       <fieldset style="border:none;padding:0;margin:0"><legend class="small" style="font-weight:600;margin-bottom:6px">Pays visés</legend>
         <div class="row" style="gap:6px">${Object.entries(META_COUNTRIES).map(([k, n]) => `<label style="flex-direction:row;align-items:center;gap:6px;font-weight:500;border:1px solid var(--line);border-radius:999px;padding:6px 12px"><input type="checkbox" name="mo-c" value="${k}" ${k === (state.profile.country || "SN") ? "checked" : ""} style="width:auto">${n}</label>`).join("")}</div></fieldset>
@@ -1494,7 +1494,7 @@ function metaOrderModal(available, internal = false, pre = null) {
       if (msg.length < 5) return toast("Écris le texte de ta pub", true);
       if (!file && !preMedia.length) return toast("Ajoute un visuel (image ou vidéo)", true);
       if ($("#mo-file", m).files.length > 3) return toast("3 visuels maximum", true);
-      if (files.some((f) => f.size > (/^video\//.test(f.type) ? 50 : 16) * 1024 * 1024)) return toast("Fichier trop lourd : 16 Mo max pour une image, 50 Mo pour une vidéo", true);
+      if (files.some((f) => f.size > (/^video\//.test(f.type) ? 100 : 16) * 1024 * 1024)) return toast("Fichier trop lourd : 16 Mo max pour une image, 100 Mo pour une vidéo", true);
       if (!countries.length) return toast("Choisis au moins un pays", true);
       if (!(budget >= minB)) return toast(`Budget minimum : ${fcfa(minB)} F`, true);
       { const maxD = Math.floor(budget / perDay);
