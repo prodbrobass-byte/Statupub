@@ -271,6 +271,47 @@ async function pixelCheck() {
   return { info, events_3_jours: Object.keys(ev).length ? ev : stats, linked, actions };
 }
 
+// Recrée les pubs d'une commande en cours dans le même ensemble (quand Meta a archivé la publication d'origine)
+async function recreate(id: string) {
+  const { data: o } = await sb.from("meta_orders").select("*").eq("id", id).single();
+  if (!o || o.status !== "en_cours") throw new Error("La pub n'est pas en cours");
+  const ids = (o.meta_ids || {}) as Record<string, string>;
+  if (!ids.adset) throw new Error("Ensemble de pubs introuvable");
+  const medias: string[] = (o.media_urls?.length ? o.media_urls : [o.media_url]).filter(Boolean).slice(0, 3);
+  const name = `SP · ${o.title}`.slice(0, 100);
+  const cta = o.objective === "site" ? "SHOP_NOW" : "LEARN_MORE";
+  const out: Record<string, string> = {};
+  for (const [i, u] of medias.entries()) {
+    let spec: any;
+    if (/\.(mp4|mov|webm|m4v)($|\?)/i.test(u)) {
+      const vid = ids[`video${i}`] || (await g(`${AD}/advideos`, { file_url: u, name: `${name} · V${i + 1}` }, "POST")).id;
+      for (let t = 0; t < 18; t++) { const st = await g(vid, { fields: "status" }).catch(() => null); if (st?.status?.video_status === "ready") break; await new Promise((r) => setTimeout(r, 5000)); }
+      const th = await g(`${vid}/thumbnails`, {}).catch(() => null);
+      const thumb = (th?.data || []).find((x: any) => x.is_preferred)?.uri || th?.data?.[0]?.uri || "https://statupub.com/logo/statupub-icone-1024.png";
+      spec = { page_id: PAGE, video_data: { video_id: vid, image_url: thumb, message: o.message, title: o.title, call_to_action: { type: cta, value: { link: o.target_url } } } };
+    } else {
+      const img = await fetch(u); if (!img.ok) throw new Error("Visuel introuvable");
+      const buf = new Uint8Array(await img.arrayBuffer());
+      let bin = ""; for (let k = 0; k < buf.length; k += 0x8000) bin += String.fromCharCode(...buf.subarray(k, k + 0x8000));
+      const up = await g(`${AD}/adimages`, { bytes: btoa(bin) }, "POST");
+      const h = (Object.values(up.images || {})[0] as any)?.hash;
+      spec = { page_id: PAGE, link_data: { image_hash: h, link: o.target_url, message: o.message, name: o.title, call_to_action: { type: cta, value: { link: o.target_url } } } };
+    }
+    const label = `${name} · R${i + 1}`;
+    const creative = await g(`${AD}/adcreatives`, { name: label, object_story_spec: spec }, "POST");
+    const ad = await g(`${AD}/ads`, { name: label, adset_id: ids.adset, creative: { creative_id: creative.id }, status: "ACTIVE", tracking_specs: TRACK }, "POST");
+    out[`ad${i + 1}`] = ad.id;
+  }
+  // les anciennes pubs (archivées) sont gardées pour l'historique
+  const old: Record<string, string> = {};
+  for (const [k, v] of Object.entries(ids)) if (/^ad\d$/.test(k)) old[`old_${k}_${Date.now() % 100000}`] = v;
+  await g(ids.adset, { status: "ACTIVE" }, "POST").catch(() => {});
+  await g(o.meta_campaign_id, { status: "ACTIVE" }, "POST").catch(() => {});
+  const next = { ...Object.fromEntries(Object.entries(ids).filter(([k]) => !/^ad\d$/.test(k))), ...old, ...out, ad: out.ad1 };
+  await sb.from("meta_orders").update({ meta_ids: next, last_error: null }).eq("id", id);
+  return { ok: true, ads: out };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST uniquement" }, 405);
@@ -285,6 +326,7 @@ Deno.serve(async (req) => {
       if (body.action === "track") return json(await trackAll());
       if (body.action === "pixel") return json(await pixelCheck());
       if (body.action === "resume") return json(await resume(body.order_id));
+      if (body.action === "recreate") return json(await recreate(body.order_id));
       if (body.action === "dryrun_video") return json(await dryrunVideo(body.url || "https://statupub.com/media/statupub-presentation.mp4"));
       return json(await sync());
     }
@@ -302,6 +344,7 @@ Deno.serve(async (req) => {
     if (body.action === "sync") return json(await sync());
     if (body.action === "stop") return json(await stop(body.order_id));
     if (body.action === "resume") return json(await resume(body.order_id));
+    if (body.action === "recreate") return json(await recreate(body.order_id));
     return json({ error: "Action inconnue" }, 400);
   } catch (e) {
     return json({ error: (e as Error).message }, e instanceof MetaErr ? 422 : 500);
