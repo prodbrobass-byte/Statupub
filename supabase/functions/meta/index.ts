@@ -7,6 +7,7 @@ const G = "https://graph.facebook.com/v23.0";
 const AD = "act_1431680522500834", PAGE = "1358181967385102";
 const XOF_PER_EUR = 655.957;
 const PIXEL = "1081784291417409";
+const EU = ["AT","BE","BG","HR","CY","CZ","DK","EE","FI","FR","DE","GR","HU","IE","IT","LV","LT","LU","MT","NL","PL","PT","RO","SK","SI","ES","SE"];
 // Indique à Meta de compter les conversions du pixel StatuPub (inscriptions, achats, contacts) pour chaque pub
 const TRACK = [{ "action.type": ["offsite_conversion"], "fb_pixel": [PIXEL] }];
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info, x-push-hook", "Access-Control-Allow-Methods": "POST, OPTIONS" };
@@ -104,7 +105,14 @@ async function launch(id: string) {
       geo_locations: cities.length ? { cities } : { countries: o.countries } };
     if (o.gender === "hommes") targeting.genders = [1];
     if (o.gender === "femmes") targeting.genders = [2];
-    const adset = await g(`${AD}/adsets`, { name, campaign_id: camp.id, lifetime_budget: eurCents, start_time: start.toISOString(), end_time: end.toISOString(),
+    // Union européenne (DSA) : Meta exige le nom du bénéficiaire et du payeur de la pub
+    const dsa: Record<string, string> = {};
+    if ((o.countries || []).some((c: string) => EU.includes(c))) {
+      const { data: p } = await sb.from("profiles").select("company, full_name").eq("id", o.annonceur_id).single();
+      const who = String(p?.company || p?.full_name || "StatuPub").trim().slice(0, 100);
+      dsa.dsa_beneficiary = who; dsa.dsa_payor = who;
+    }
+    const adset = await g(`${AD}/adsets`, { ...dsa, name, campaign_id: camp.id, lifetime_budget: eurCents, start_time: start.toISOString(), end_time: end.toISOString(),
       billing_event: "IMPRESSIONS", optimization_goal: "LANDING_PAGE_VIEWS", bid_strategy: "LOWEST_COST_WITHOUT_CAP", destination_type: "WEBSITE", targeting, status: "PAUSED" }, "POST");
     ids.adset = adset.id;
     // 4-5. Un visuel = une pub (même budget partagé : Meta privilégie la meilleure)
