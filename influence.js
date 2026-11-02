@@ -68,6 +68,10 @@ async function infUpload(bucket, path, file) {
   return bucket === "influence" ? sb.storage.from(bucket).getPublicUrl(path).data.publicUrl : "sb:" + path;
 }
 
+const infBk = new Map();
+document.addEventListener("click", (e) => { const b = e.target.closest("[data-ct]"); if (b && infBk.has(b.dataset.ct)) { e.preventDefault(); infContract(infBk.get(b.dataset.ct)); } });
+const bkLinks = (x) => `<div class="row" style="gap:6px;flex-wrap:wrap"><a class="btn btn-ghost btn-sm" href="#/messages/${x.id}">💬 Messages${x.unread ? ` (${x.unread})` : ""}</a>${["refused", "expired", "cancelled", "awaiting_creator"].includes(x.status) ? "" : `<button type="button" class="btn btn-ghost btn-sm" data-ct="${x.id}">📄 Contrat</button>`}</div>`;
+
 /* ---------- Ruban « Nos influenceurs » (accueil) ---------- */
 async function loadInfRibbon() {
   const box = $("#home-inf"); if (!box) return;
@@ -109,6 +113,8 @@ async function viewInfluence() {
       ${[["Choisissez", "Filtrez par réseau, catégorie et budget. Chaque chiffre est vérifié par StatuPub."], ["Réservez", "Choisissez une formule ou faites une offre. Votre argent est bloqué, pas encore versé."], ["Validez", "Le créateur vous envoie la vidéo avant publication. Vous la validez ou demandez une retouche."], ["Payez après", "Le créateur est payé seulement quand la publication est en ligne et vérifiée."]]
         .map(([t, d], i) => `<div class="inf-step"><b class="n">${i + 1}</b><b>${t}</b><p class="small muted" style="margin:0">${d}</p></div>`).join("")}
     </div></section>
+    <section class="card row between" style="flex-wrap:wrap;gap:14px"><div><h2 style="margin:0">Tu es créateur ?</h2><p class="muted" style="margin:4px 0 0">Plus de 200 000 abonnés ? Envoie ta candidature pour rejoindre l'Espace Pub Influenceur.</p></div>
+      <div class="row"><a class="btn btn-ghost" href="#/conditions-influence">Les conditions</a><a class="btn btn-primary" href="#/devenir-createur">Devenir créateur StatuPub</a></div></section>
     <section class="inf-fees"><div class="stack" style="gap:8px;max-width:560px"><h2 style="margin:0">Une commission simple et visible</h2><p style="margin:0;color:#CFE0DB">Pas de frais cachés. La marque paie le prix du créateur plus ${Math.round(fees().b * 100)} % de frais de service. Le créateur garde ${Math.round((1 - fees().c) * 100)} % de son prix.</p></div>
       <div class="row" style="gap:28px"><div><div class="big">${Math.round(fees().b * 100)} %</div><div class="small">frais de service marque</div></div><div><div class="big">${Math.round((1 - fees().c) * 100)} %</div><div class="small">gardés par le créateur</div></div></div></section>
   </main></div>`;
@@ -163,7 +169,7 @@ async function viewInfProfile(slug) {
   app.innerHTML = `<div class="spinner"></div>`;
   const p = await rpc("inf_profile", { p_slug: slug });
   if (!p) { app.innerHTML = `<main class="wrap"><div class="empty">Ce créateur n'existe pas ou n'est plus visible. <a href="#/influence">Voir tous les créateurs</a></div></main>`; return; }
-  const brand = isBrandUser() ? await sb.from("brands").select("id, company, verified_at").eq("id", state.session.user.id).maybeSingle().then((r) => r.data) : null;
+  const brand = isBrandUser() ? await sb.from("brands").select("id, company, verified_at, terms_accepted_at").eq("id", state.session.user.id).maybeSingle().then((r) => r.data) : null;
   const wallet = brand ? await rpc("annonceur_wallet").then((r) => r[0]).catch(() => null) : null;
   const pk = (p.packages || []);
   const busySet = new Set(p.busy || []);
@@ -240,6 +246,7 @@ async function viewInfProfile(slug) {
       <label>Lien à mettre (facultatif)<input id="ib-link" type="url" placeholder="https://"></label>
       <label>Date de publication souhaitée<input id="ib-date" type="date" min="${minS}"></label>
       <label class="row" style="gap:8px;font-weight:500"><input type="checkbox" id="ib-val" checked style="width:auto"> Je veux valider la vidéo avant publication</label>
+      ${!brand.terms_accepted_at ? `<label class="row small" style="gap:8px;font-weight:500"><input type="checkbox" id="ib-terms" required style="width:auto"> J'accepte les <a href="#/conditions-influence" target="_blank">conditions de l'Espace Pub Influenceur</a></label>` : ""}
       <div class="stack small" style="gap:4px;border-top:1px solid var(--line);padding-top:10px" id="ib-sum"></div>
       <button class="btn btn-primary" type="submit" ${p.accepting ? "" : "disabled"}>Envoyer la demande</button>
       <p class="small muted" style="margin:0">Le créateur a ${state.settings?.inf_accept_hours || 48} h pour accepter. Sinon, vous êtes remboursé automatiquement.</p>
@@ -269,6 +276,7 @@ async function viewInfProfile(slug) {
   $("#ib-f").onsubmit = async (e) => {
     e.preventDefault(); const b = e.submitter; busy(b, true);
     try {
+      if ($("#ib-terms")?.checked) await rpc("inf_accept_terms");
       await rpc("inf_book", { p_influencer: p.id, p_package: $("#ib-pk").value || null, p_kind: kind, p_offer: kind === "offer" ? price() : null,
         p_product: $("#ib-prod").value, p_brief: $("#ib-brief").value, p_link: $("#ib-link").value.trim(), p_date: $("#ib-date").value || null, p_validation: $("#ib-val").checked });
       toast("Demande envoyée à " + p.name + " !"); location.hash = "#/marque";
@@ -331,13 +339,16 @@ async function viewCreateur(tab = "demandes") {
   app.innerHTML = `<div class="spinner"></div>`;
   const [me, bk, w] = await Promise.all([rpc("inf_mine"), rpc("inf_my_bookings"), rpc("inf_creator_wallet")]);
   if (!me?.id) { app.innerHTML = `<main class="wrap"><div class="empty">Profil créateur introuvable. Contacte StatuPub.</div></main>`; return; }
+  bk.forEach((x) => infBk.set(x.id, x));
   const req = bk.filter((x) => x.status === "awaiting_creator");
+  const unread = bk.reduce((s, x) => s + Number(x.unread || 0), 0);
   const live = bk.filter((x) => ["accepted", "changes_requested", "content_submitted", "content_approved", "published"].includes(x.status));
   const tabs = [["demandes", "Demandes", req.length], ["campagnes", "Campagnes", live.filter((x) => ["accepted", "changes_requested", "content_approved"].includes(x.status)).length], ["profil", "Mon profil"], ["reseaux", "Réseaux"], ["formules", "Formules"], ["gains", "Gains"]];
   const visible = me.status === "verified" || me.status === "certified";
   app.innerHTML = `<main class="wrap">
     <div class="page-head"><div class="row" style="gap:14px">${infAva(me.avatar_url, me.display_name)}<div><p class="eyebrow">Espace créateur</p><h1 style="font-size:2rem;margin:0">${esc(me.display_name)}</h1></div></div>
-      <div class="row"><a class="btn btn-ghost btn-sm" href="#/influence/${esc(me.slug)}">Voir mon profil public</a></div></div>
+      <div class="row"><a class="btn btn-ghost btn-sm" href="#/messages">💬 Messages${unread ? ` (${unread})` : ""}</a><a class="btn btn-ghost btn-sm" href="#/influence/${esc(me.slug)}">Voir mon profil public</a></div></div>
+    ${!me.terms_accepted_at ? `<div class="notice warn" style="margin-bottom:16px"><div><b>Accepte la charte créateur</b><p class="small muted">Obligatoire avant d'accepter ta première campagne.</p></div><button class="btn btn-ink btn-sm" id="cr-terms">Lire et accepter</button></div>` : ""}
     ${!visible ? `<div class="notice ${me.status === "rejected" ? "warn" : "info"}" style="margin-bottom:16px"><div><b>${me.status === "pending" ? "Profil en vérification" : me.status === "hidden" ? "Profil masqué" : "Profil refusé"}</b><p class="small muted">${me.status === "pending" ? "Complète ton profil, tes réseaux (avec captures de statistiques) et au moins une formule. StatuPub vérifie et publie ton profil." : "Contacte StatuPub pour en savoir plus."}</p></div></div>` : ""}
     <div class="grid g4" style="margin-bottom:20px">
       <div class="card kpi"><span class="eyebrow">En cours</span><div>${money(w.pending)}</div><span class="small muted">campagnes acceptées</span></div>
@@ -348,6 +359,7 @@ async function viewCreateur(tab = "demandes") {
     <div class="tabs" role="tablist">${tabs.map(([k, l, n]) => `<button class="tab" role="tab" aria-selected="${k === tab}" data-t="${k}">${l}${n ? `<span class="count">${n}</span>` : ""}</button>`).join("")}</div>
     <div id="cr-body" class="stack" style="margin-top:20px"></div></main>`;
   app.querySelectorAll("[data-t]").forEach((b) => b.onclick = () => location.hash = "#/createur?t=" + b.dataset.t);
+  $("#cr-terms")?.addEventListener("click", () => infTermsModal("creator", () => viewCreateur(tab)));
   const body = $("#cr-body"); const reload = () => viewCreateur(tab);
   const fn = { demandes: crRequests, campagnes: crCampaigns, profil: crProfile, reseaux: crNetworks, formules: crPackages, gains: crGains }[tab] || crRequests;
   try { await fn(body, { me, bk, req, live, reload }); } catch (e) { body.innerHTML = `<div class="notice warn">${esc(errMsg(e))}</div>`; }
@@ -358,14 +370,16 @@ const bkInfo = (x, side) => `<div style="flex:1;min-width:240px" class="stack sm
   ${x.brief ? `<details><summary>Brief</summary><p style="white-space:pre-wrap;margin:6px 0 0">${esc(x.brief)}</p></details>` : ""}
   ${x.link ? `<div>Lien : <a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.link)}</a></div>` : ""}
   ${x.brand_comment ? `<div class="notice warn small"><span>Commentaire de la marque : ${esc(x.brand_comment)}</span></div>` : ""}
-  ${x.post_url ? `<div>Publication : <a href="${esc(x.post_url)}" target="_blank" rel="noopener">voir</a></div>` : ""}</div>`;
+  ${x.post_url ? `<div>Publication : <a href="${esc(x.post_url)}" target="_blank" rel="noopener">voir</a></div>` : ""}${bkLinks(x)}</div>`;
 async function crRequests(body, { req }) {
   body.innerHTML = req.length ? req.map((x) => `<div class="card inf-req">${bkInfo(x, "creator")}
     <div class="stack" style="gap:8px;align-items:flex-end"><div><span class="small muted">Pour toi</span> <span class="inf-price">${fcfa(x.net)} F</span></div>
       <span class="small muted">Réponds avant le ${dateTimeFr(x.expires_at)}</span>
       <div class="row"><button class="btn btn-ghost btn-sm" data-no="${x.id}">Refuser</button><button class="btn btn-ok btn-sm" data-yes="${x.id}">Accepter</button></div></div></div>`).join("")
     : `<div class="empty">Aucune demande en attente. Les nouvelles réservations arrivent ici (et en notification).</div>`;
-  body.querySelectorAll("[data-yes]").forEach((b) => b.onclick = async () => { busy(b, true);
+  body.querySelectorAll("[data-yes]").forEach((b) => b.onclick = async () => {
+    if (!infBk.get(b.dataset.yes) || !(await rpc("inf_mine")).terms_accepted_at) return infTermsModal("creator", () => b.click());
+    busy(b, true);
     try { await rpc("inf_respond", { p_id: b.dataset.yes, p_accept: true }); toast("Campagne acceptée. Au travail !"); location.hash = "#/createur?t=campagnes"; } catch (e) { toast(errMsg(e), true); busy(b, false); } });
   body.querySelectorAll("[data-no]").forEach((b) => b.onclick = () => openModal(`<h2 style="margin:0">Refuser la demande</h2><p class="small muted" style="margin:0">La marque est remboursée intégralement.</p>
     <label>Raison (facultatif)<textarea id="rf-r" rows="3" maxlength="300" placeholder="Ex. : pas disponible à cette date"></textarea></label>
@@ -521,13 +535,16 @@ async function viewMarque() {
   const uid = state.session.user.id;
   const [brand, bk, w] = await Promise.all([sb.from("brands").select("*").eq("id", uid).maybeSingle().then((r) => r.data), rpc("inf_my_bookings"), rpc("annonceur_wallet").then((r) => r[0]).catch(() => null)]);
   if (!brand) return brandForm(null);
+  bk.forEach((x) => infBk.set(x.id, x));
+  const unread = bk.reduce((s, x) => s + Number(x.unread || 0), 0);
   const toCheck = bk.filter((x) => x.status === "content_submitted");
   const running = bk.filter((x) => ["awaiting_creator", "accepted", "content_submitted", "changes_requested", "content_approved", "published"].includes(x.status));
   const engaged = running.reduce((s, x) => s + Number(x.total), 0);
   app.innerHTML = `<main class="wrap">
     <div class="page-head"><div><p class="eyebrow">Espace marque · Pub Influenceur</p><h1 style="font-size:2rem;margin:0">${esc(brand.company)}</h1>
       <p class="muted small" style="margin:4px 0 0">${brand.verified_at ? "✓ Entreprise vérifiée" : "Vérification de l'entreprise en cours"}${brand.ninea ? " · NINEA " + esc(brand.ninea) : ""} · <button class="btn btn-ghost btn-sm" id="br-ed" style="padding:2px 8px">Modifier</button></p></div>
-      <div class="row"><a class="btn btn-ghost" href="#/annonceur">Mes campagnes statuts</a><a class="btn btn-primary" href="#/influence">Trouver un créateur</a></div></div>
+      <div class="row"><a class="btn btn-ghost" href="#/messages">💬 Messages${unread ? ` (${unread})` : ""}</a><a class="btn btn-ghost" href="#/annonceur">Mes campagnes statuts</a><a class="btn btn-primary" href="#/influence">Trouver un créateur</a></div></div>
+    ${!brand.terms_accepted_at ? `<div class="notice warn" style="margin-bottom:16px"><div><b>Acceptez les conditions de l'Espace Pub Influenceur</b><p class="small muted">Obligatoire avant votre première réservation.</p></div><button class="btn btn-ink btn-sm" id="br-terms">Lire et accepter</button></div>` : ""}
     <div class="grid g4" style="margin-bottom:20px">
       <div class="card kpi"><span class="eyebrow">Campagnes en cours</span><span class="num">${running.length}</span></div>
       <div class="card kpi"><span class="eyebrow">Vidéos à valider</span><span class="num">${toCheck.length}</span></div>
@@ -542,11 +559,12 @@ async function viewMarque() {
         <td class="row" style="gap:6px;flex-wrap:nowrap">${x.post_url ? `<a class="btn btn-ghost btn-sm" href="${esc(x.post_url)}" target="_blank" rel="noopener">Voir le post</a>` : ""}
           ${["awaiting_creator", "accepted"].includes(x.status) ? `<button class="btn btn-ghost btn-sm" data-cancel="${x.id}" data-st="${x.status}">Annuler</button>` : ""}
           ${["verified", "paid_out"].includes(x.status) && !x.reviewed ? `<button class="btn btn-primary btn-sm" data-rev="${x.id}">Laisser un avis</button>` : ""}
-          <button class="btn btn-ghost btn-sm" data-det="${x.id}">Détails</button></td></tr>`).join("")}</tbody></table></div>`
+          <a class="btn btn-ghost btn-sm" href="#/messages/${x.id}">💬${x.unread ? " " + x.unread : ""}</a><button class="btn btn-ghost btn-sm" data-det="${x.id}">Détails</button></td></tr>`).join("")}</tbody></table></div>`
         : `<div class="empty">Aucune réservation pour l'instant. <a href="#/influence">Découvrir les créateurs</a></div>`}
     </section>
     <p class="small muted" style="margin-top:16px">Annulation gratuite avant l'acceptation du créateur, 50 % remboursés après, rien après la livraison de la vidéo.</p></main>`;
   $("#br-ed").onclick = () => brandForm(brand);
+  $("#br-terms")?.addEventListener("click", () => infTermsModal("brand", viewMarque));
   $("#br-rc").onclick = rechargeModal;
   const chk = $("#br-check");
   for (const x of toCheck) {
@@ -593,10 +611,12 @@ function brandForm(b) {
     <div class="grid g2"><label>Personne à contacter<input id="bf-ct" required maxlength="80" value="${esc(b?.contact_name || p.full_name || "")}"></label><label>Téléphone<input id="bf-ph" type="tel" required value="${esc(b?.phone || p.phone || "")}"></label></div>
     <div class="grid g2"><label>Site ou page (facultatif)<input id="bf-ws" maxlength="200" value="${esc(b?.website || "")}" placeholder="https://"></label><label>Secteur<input id="bf-se" maxlength="60" value="${esc(b?.sector || "")}" placeholder="Ex. : cosmétique"></label></div>
     ${b ? `<p class="small muted" style="margin:0">Changer le nom ou le NINEA relance la vérification.</p>` : ""}
+    ${!b?.terms_accepted_at ? `<label class="row" style="gap:8px;font-weight:500"><input type="checkbox" id="bf-terms" style="width:auto" required> J'accepte les <a href="#/conditions-influence" target="_blank">conditions de l'Espace Pub Influenceur</a></label>` : ""}
     <div class="row"><button class="btn btn-primary" type="submit">Enregistrer</button>${b ? `<a class="btn btn-ghost" href="#/marque">Annuler</a>` : `<a class="btn btn-ghost" href="#/annonceur">Plus tard</a>`}</div></form></main>`;
   $("#bf").onsubmit = async (e) => {
     e.preventDefault(); const btn = e.submitter; busy(btn, true);
     try { await rpc("brand_save", { p_company: $("#bf-co").value, p_ninea: $("#bf-ni").value, p_rccm: $("#bf-rc").value, p_contact: $("#bf-ct").value, p_phone: $("#bf-ph").value, p_website: $("#bf-ws").value, p_sector: $("#bf-se").value });
+      if ($("#bf-terms")?.checked) await rpc("inf_accept_terms");
       toast("Fiche entreprise enregistrée");
       let back = ""; try { back = sessionStorage.getItem("sp_inf_back") || ""; sessionStorage.removeItem("sp_inf_back"); } catch {}
       if (back && back !== location.hash) location.hash = back; else viewMarque(); }
@@ -607,7 +627,7 @@ function brandForm(b) {
 /* ---------- Admin : onglet Influenceurs ---------- */
 async function adminInfluence(body, reload) {
   const ov = await rpc("inf_admin_overview");
-  const sub = new URLSearchParams(location.hash.split("?")[1] || "").get("s") || "createurs";
+  const sub = new URLSearchParams(location.hash.split("?")[1] || "").get("s") || ((ov.applications || []).some((x) => x.status === "nouveau") ? "candidatures" : "createurs");
   const payH = Number(ov.payout_hours || 72);
   const toVerify = ov.bookings.filter((x) => x.status === "published");
   const payable = ov.bookings.filter((x) => x.status === "verified");
@@ -615,8 +635,9 @@ async function adminInfluence(body, reload) {
   const pendingInf = ov.influencers.filter((x) => x.status === "pending");
   const newReq = ov.requests.filter((x) => x.status === "nouveau");
   const pendRev = ov.reviews.filter((x) => x.status === "pending");
+  const apps = ov.applications || []; const newApps = apps.filter((x) => x.status === "nouveau");
   const comm = ov.bookings.filter((x) => ["verified", "paid_out"].includes(x.status)).reduce((s, x) => s + Number(x.creator_fee) + Number(x.brand_fee), 0);
-  const subs = [["createurs", "Créateurs", pendingInf.length], ["reservations", "Réservations", toVerify.length + payable.length + disputes.length], ["marques", "Marques", ov.brands.filter((x) => !x.verified_at).length], ["demandes", "Demandes de prix", newReq.length], ["avis", "Avis", pendRev.length]];
+  const subs = [["candidatures", "Candidatures", newApps.length], ["createurs", "Créateurs", pendingInf.length], ["reservations", "Réservations", toVerify.length + payable.length + disputes.length], ["marques", "Marques", ov.brands.filter((x) => !x.verified_at).length], ["demandes", "Demandes de prix", newReq.length], ["avis", "Avis", pendRev.length]];
   body.innerHTML = `<div class="grid g4" style="margin-bottom:16px">
       <div class="card kpi"><span class="eyebrow">Créateurs visibles</span><span class="num">${ov.influencers.filter((x) => ["verified", "certified"].includes(x.status)).length}</span><span class="small muted">${pendingInf.length} à vérifier</span></div>
       <div class="card kpi"><span class="eyebrow">Publications à vérifier</span><span class="num">${toVerify.length}</span></div>
@@ -632,6 +653,19 @@ async function adminInfluence(body, reload) {
     openModal(`<h2 style="margin:0">Lien d'invitation</h2><p class="small muted" style="margin:0">Envoie ce lien à ${esc(name)}. Il ne sert qu'une fois.</p>
       <input readonly value="${esc(link)}" id="iv-l"><div class="row"><button class="btn btn-primary" id="iv-c">Copier</button><a class="btn btn-ok" href="${esc(wa)}" target="_blank" rel="noopener">Envoyer sur WhatsApp</a><button class="btn btn-ghost" data-close>Fermer</button></div>`,
     (m) => { $("#iv-c", m).onclick = () => copy(link); }); };
+
+  if (sub === "candidatures") {
+    box.innerHTML = apps.length ? apps.map((a) => { const tot = (a.networks || []).reduce((s, n) => s + Number(n.followers || 0), 0); const tel = String(a.phone || "").replace(/\D/g, "");
+      return `<div class="card stack" style="gap:8px;${a.status === "nouveau" ? "" : "opacity:.65"}"><div class="row between" style="flex-wrap:wrap;gap:10px">
+        <div><b>${esc(a.full_name)}</b> <span class="small muted">${dateTimeFr(a.created_at)}</span><div class="small muted">${esc([a.city, COUNTRIES?.[a.country]?.name].filter(Boolean).join(", "))} · ${esc(a.phone)}${a.email ? " · " + esc(a.email) : ""} · <b>${kfmt(tot)}</b> abonnés annoncés</div>
+          <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:4px">${(a.categories || []).map((c) => `<span class="inf-net">${esc(c)}</span>`).join("")}</div></div>
+        <div class="row" style="gap:6px"><a class="btn btn-ghost btn-sm" href="https://wa.me/${tel}" target="_blank" rel="noopener">WhatsApp</a>
+          ${a.status === "nouveau" ? `<button class="btn btn-ghost btn-sm" data-ap="${a.id}" data-ok="0">Refuser</button>` : ""}${a.status !== "refuse" ? `<button class="btn btn-primary btn-sm" data-ap="${a.id}" data-ok="1" data-nm="${esc(a.full_name)}">${a.status === "invite" ? "Nouveau lien" : "Inviter"}</button>` : `<span class="small muted">Refusée</span>`}</div></div>
+        <div class="row" style="gap:8px;flex-wrap:wrap">${(a.networks || []).map((n) => `<a class="inf-net" style="display:inline-flex;gap:6px;align-items:center;text-decoration:none" href="${esc(n.url)}" target="_blank" rel="noopener">${netIcon(n.network, 14)} ${INF_NETS[n.network]} · ${kfmt(n.followers)}</a>`).join("")}</div>
+        ${a.message ? `<p class="small" style="margin:0">${esc(a.message)}</p>` : ""}</div>`; }).join("") : `<div class="empty">Aucune candidature. Partage le lien <b>statupub.com/#/devenir-createur</b>.</div>`;
+    box.querySelectorAll("[data-ap]").forEach((b) => b.onclick = async () => { const ok = b.dataset.ok === "1"; if (!ok && !confirm("Refuser cette candidature ?")) return; busy(b, true);
+      try { const r = await rpc("inf_admin_application", { p_id: b.dataset.ap, p_invite: ok }); if (ok && r?.code) { inviteBox(r.code, b.dataset.nm); setTimeout(reload, 50); } else reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } });
+  }
 
   if (sub === "createurs") {
     const ST = { pending: "À vérifier", verified: "Vérifié", certified: "Certifié", hidden: "Masqué", rejected: "Refusé" };
@@ -676,6 +710,7 @@ async function adminInfluence(body, reload) {
     const row = (x) => { const due = x.verified_at ? new Date(new Date(x.verified_at).getTime() + payH * 3600e3) : null; const canPay = due && due <= new Date();
       return `<tr><td><b>${esc(x.influencer_name)}</b><div class="small muted">${esc(x.brand_company || "")}</div></td><td>${esc(x.package_title)}<div class="small muted">${dateTimeFr(x.created_at)}</div></td><td>${infSt(x.status)}${x.admin_note ? `<div class="small muted">${esc(x.admin_note)}</div>` : ""}</td>
       <td>${money(x.total)}<div class="small muted">créateur ${fcfa(x.price - x.creator_fee)} F</div></td><td class="row" style="gap:6px">
+      <a class="btn btn-ghost btn-sm" href="#/messages/${x.id}">💬${x.messages ? " " + x.messages : ""}</a>
       ${x.post_url ? `<a class="btn btn-ghost btn-sm" href="${esc(x.post_url)}" target="_blank" rel="noopener">Post</a>` : ""}
       ${x.status === "published" ? `<button class="btn btn-ok btn-sm" data-vp="${x.id}" data-ok="1">Publication OK</button><button class="btn btn-bad btn-sm" data-vp="${x.id}" data-ok="0">Litige</button>` : ""}
       ${x.status === "verified" ? (canPay ? `<button class="btn btn-primary btn-sm" data-pay="${x.id}" data-amt="${x.price - x.creator_fee}">Payer</button>` : `<span class="small muted">Payable le ${dateTimeFr(due)}</span>`) : ""}
@@ -716,4 +751,176 @@ async function adminInfluence(body, reload) {
       <div class="row"><span class="small muted">${r.status === "pending" ? "En attente" : r.status === "published" ? "Publié" : "Masqué"}</span>${r.status !== "published" ? `<button class="btn btn-ok btn-sm" data-rv="${r.booking_id}" data-s="published">Publier</button>` : ""}${r.status !== "hidden" ? `<button class="btn btn-ghost btn-sm" data-rv="${r.booking_id}" data-s="hidden">Masquer</button>` : ""}</div></div>`).join("") : `<div class="empty">Aucun avis.</div>`;
     box.querySelectorAll("[data-rv]").forEach((b) => b.onclick = () => act(b, "inf_admin_review", { p_booking: b.dataset.rv, p_status: b.dataset.s }));
   }
+}
+
+/* ==================== Conditions, charte et contrat ==================== */
+const INF_TERMS_V = "v1";
+const INF_RULES = () => { const s = state.settings || {}; return [
+  ["Réponse du créateur", `${s.inf_accept_hours || 48} h pour accepter ou refuser. Sans réponse, la marque est remboursée automatiquement.`],
+  ["Validation de la vidéo", `La marque a ${s.inf_validate_hours || 48} h pour valider ou demander une retouche (2 retouches incluses). Sans réponse, la vidéo est validée automatiquement.`],
+  ["Annulation", "Gratuite avant l'acceptation du créateur. 50 % du prix remboursés après l'acceptation. Aucun remboursement après la livraison de la vidéo."],
+  ["Durée en ligne", "La publication reste en ligne au moins 30 jours. Une suppression avant ce délai ouvre un litige."],
+  ["Paiement du créateur", `Versé ${s.inf_payout_hours || 72} h après la vérification de la publication par StatuPub, sur mobile money.`],
+  ["Mention obligatoire", "#pub ou « partenariat rémunéré » visible dans chaque publication."],
+  ["Commission", `Le créateur garde ${Math.round((1 - fees().c) * 100)} % de son prix. La marque paie ${Math.round(fees().b * 100)} % de frais de service en plus du prix.`],
+]; };
+const INF_CREATOR_CHARTER = [
+  "Je publie seulement le contenu validé par la marque (ou conforme au brief si elle n'a pas demandé de validation), à la date convenue, depuis mes propres comptes.",
+  "J'ajoute toujours la mention #pub ou « partenariat rémunéré » et je laisse la publication en ligne au moins 30 jours.",
+  "Mes chiffres (abonnés, vues, engagement) sont vrais et récents. Je n'utilise ni faux abonnés, ni achat de vues, ni robots.",
+  "Je ne fais pas la promotion de produits illégaux, dangereux, trompeurs ou contraires à la loi sénégalaise.",
+  "Toutes les réservations et tous les paiements passent par StatuPub. Je ne demande pas à la marque de me payer en dehors de la plateforme pour une campagne trouvée ici.",
+  "Je garde confidentielles les informations du brief qui ne sont pas encore publiques.",
+  "Je reste libre de travailler avec d'autres plateformes et d'autres marques : l'Espace Pub Influenceur n'est pas exclusif.",
+];
+const INF_BRAND_TERMS = [
+  "Les informations de mon entreprise (nom, NINEA, contact) sont exactes. J'ai le droit de faire la promotion du produit ou du service réservé.",
+  "Mon brief est clair et respecte la loi : pas de produit illégal, dangereux ou trompeur, pas de propos mensongers sur la concurrence.",
+  "Le montant de la réservation est bloqué sur mon solde StatuPub jusqu'à la fin de la campagne. Le créateur n'est payé qu'après la publication vérifiée.",
+  "Je peux repartager la publication sur mes propres comptes en citant le créateur. Toute utilisation en publicité payante (boost, Spark Ads, affichage, TV) demande l'accord écrit du créateur et peut être facturée à part.",
+  "Toutes les réservations et tous les paiements passent par StatuPub. Je ne contacte pas le créateur pour le payer en dehors de la plateforme pour une campagne trouvée ici.",
+  "Je laisse un avis honnête, basé seulement sur la campagne réalisée.",
+];
+const INF_COMMON = [
+  "StatuPub (West Africa SN Production) met en relation les marques et les créateurs, garde l'argent pendant la campagne et règle les litiges. StatuPub n'est pas l'employeur du créateur.",
+  "Les numéros de téléphone, e-mails et liens WhatsApp sont masqués dans la messagerie pour protéger les deux parties.",
+  "En cas de litige, StatuPub examine les échanges, le brief et la publication, puis décide du remboursement total, partiel ou du paiement du créateur.",
+  "Un compte qui ne respecte pas ces règles peut être suspendu. Les sommes dues pour les campagnes terminées restent versées.",
+  "Ces conditions sont soumises au droit sénégalais. À défaut d'accord amiable, les tribunaux de Dakar sont compétents.",
+];
+const liList = (a) => `<ul class="stack" style="gap:8px;padding-left:20px;margin:0">${a.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>`;
+const rulesTable = () => `<div class="table"><table><tbody>${INF_RULES().map(([k, v]) => `<tr><th style="text-align:left;width:34%">${esc(k)}</th><td>${esc(v)}</td></tr>`).join("")}</tbody></table></div>`;
+
+function viewInfTerms() {
+  app.innerHTML = `<main class="wrap stack" style="max-width:860px;gap:22px;padding-bottom:48px">
+    <div><p class="eyebrow">Espace Pub Influenceur</p><h1 style="font-size:2rem;margin:4px 0 0">Conditions de l'Espace Pub Influenceur</h1><p class="muted small">Version ${INF_TERMS_V} · s'appliquent en plus des <a href="/conditions/">conditions générales de StatuPub</a>.</p></div>
+    <section class="card stack"><h2 style="margin:0">Les règles de chaque campagne</h2>${rulesTable()}</section>
+    <section class="card stack"><h2 style="margin:0">Charte créateur</h2>${liList(INF_CREATOR_CHARTER)}</section>
+    <section class="card stack"><h2 style="margin:0">Engagements des marques</h2>${liList(INF_BRAND_TERMS)}</section>
+    <section class="card stack"><h2 style="margin:0">Pour tout le monde</h2>${liList(INF_COMMON)}</section>
+    <p><a class="btn btn-ghost" href="#/influence">Retour aux créateurs</a></p></main>`;
+}
+function infTermsModal(kind, onOk) {
+  openModal(`<h2 style="margin:0">${kind === "creator" ? "Charte créateur" : "Conditions pour les marques"}</h2>
+    <div class="stack small" style="max-height:52vh;overflow:auto;gap:14px">${rulesTable()}${liList(kind === "creator" ? INF_CREATOR_CHARTER : INF_BRAND_TERMS)}${liList(INF_COMMON)}</div>
+    <label class="row" style="gap:8px;font-weight:600"><input type="checkbox" id="tm-ok" style="width:auto"> J'ai lu et j'accepte ces conditions</label>
+    <div class="row"><button class="btn btn-primary" id="tm-go" disabled>Accepter</button><button class="btn btn-ghost" data-close>Plus tard</button></div>`, (m) => {
+    $("#tm-ok", m).onchange = (e) => { $("#tm-go", m).disabled = !e.target.checked; };
+    $("#tm-go", m).onclick = async (e) => { busy(e.target, true); try { await rpc("inf_accept_terms"); closeModal(); toast("Conditions acceptées"); onOk?.(); } catch (err) { toast(errMsg(err), true); busy(e.target, false); } };
+  });
+}
+/* Contrat de collaboration d'une réservation : page imprimable / PDF */
+function infContract(x) {
+  const ref = "SP-INF-" + String(x.id).slice(0, 8).toUpperCase();
+  const d = (v) => v ? new Date(v).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) : "—";
+  const w = window.open("", "_blank");
+  if (!w) return toast("Autorise les fenêtres pour ouvrir le contrat", true);
+  w.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Contrat ${ref}</title>
+  <style>body{font:15px/1.55 system-ui,sans-serif;color:#10201D;max-width:780px;margin:24px auto;padding:0 16px;background:#fff}h1{font-size:22px;margin:0}h2{font-size:16px;margin:22px 0 8px;color:#0E3B36}
+  table{border-collapse:collapse;width:100%}td,th{border:1px solid #DDD;padding:8px;text-align:left;vertical-align:top}th{background:#F6F4EF;width:34%}.muted{color:#55625F;font-size:13px}
+  .sig{display:flex;gap:24px;margin-top:28px}.sig div{flex:1;border-top:1px solid #999;padding-top:6px;font-size:13px}button{margin:16px 0;padding:10px 16px;border:0;border-radius:10px;background:#0E3B36;color:#fff;font-weight:700;cursor:pointer}
+  @media print{button{display:none}body{margin:0}}</style></head><body>
+  <button onclick="print()">Imprimer / enregistrer en PDF</button>
+  <h1>Contrat de collaboration · Espace Pub Influenceur</h1><p class="muted">Référence ${ref} · conditions ${esc(x.terms_version || INF_TERMS_V)} · créé le ${d(x.created_at)}</p>
+  <h2>Les parties</h2><table>
+    <tr><th>La marque</th><td>${esc(x.brand_company || "")}${x.brand_ninea ? " · NINEA " + esc(x.brand_ninea) : ""}</td></tr>
+    <tr><th>Le créateur</th><td>${esc(x.influencer_name || "")}</td></tr>
+    <tr><th>L'intermédiaire</th><td>StatuPub, plateforme de West Africa SN Production (Sénégal), qui garde le paiement et vérifie la publication</td></tr></table>
+  <h2>La prestation</h2><table>
+    <tr><th>Formule</th><td>${esc(x.package_title || "")}${x.kind === "offer" ? " (offre acceptée)" : ""}</td></tr>
+    <tr><th>Produit ou marque</th><td>${esc(x.product || "—")}</td></tr>
+    <tr><th>Date de publication souhaitée</th><td>${d(x.publish_date)}</td></tr>
+    <tr><th>Validation avant publication</th><td>${x.wants_validation ? "Oui, 2 retouches incluses" : "Non"}</td></tr>
+    <tr><th>Lien à mettre</th><td>${esc(x.link || "—")}</td></tr>
+    <tr><th>Brief</th><td style="white-space:pre-wrap">${esc(x.brief || "")}</td></tr></table>
+  <h2>Le prix</h2><table>
+    <tr><th>Prix du créateur</th><td>${fcfa(x.price)} FCFA</td></tr>
+    <tr><th>Frais de service marque</th><td>${fcfa(x.brand_fee)} FCFA</td></tr>
+    <tr><th>Total payé par la marque</th><td><b>${fcfa(x.total)} FCFA</b></td></tr>
+    <tr><th>Net versé au créateur</th><td>${fcfa(x.price - x.creator_fee)} FCFA, après vérification de la publication</td></tr></table>
+  <h2>Règles de la campagne</h2><table>${INF_RULES().map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("")}</table>
+  <h2>Engagements du créateur</h2><ul>${INF_CREATOR_CHARTER.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
+  <h2>Engagements de la marque</h2><ul>${INF_BRAND_TERMS.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
+  <h2>Dispositions communes</h2><ul>${INF_COMMON.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
+  <p class="muted">Les deux parties ont accepté ces conditions en ligne sur statupub.com : la marque en envoyant la réservation, le créateur en l'acceptant${x.accepted_at ? " le " + d(x.accepted_at) : ""}. Ce document fait foi sans signature manuscrite.</p>
+  <div class="sig"><div>La marque<br>${esc(x.brand_company || "")}</div><div>Le créateur<br>${esc(x.influencer_name || "")}</div><div>StatuPub</div></div>
+  </body></html>`);
+  w.document.close();
+}
+
+/* ==================== Candidature créateur (publique) ==================== */
+function viewInfApply() {
+  const cats = [];
+  app.innerHTML = `<div class="inf-pro"><section class="inf-hero"><div class="wrap stack" style="gap:16px">
+    <span class="inf-kicker">Espace Pub Influenceur · Candidature</span>
+    <h1>Tu es créateur ? Rejoins StatuPub.</h1>
+    <p>Réservé aux créateurs avec une vraie audience (200 000 abonnés ou plus sur au moins un réseau). Les marques te réservent, tu es payé après chaque publication vérifiée. Tu gardes ${Math.round((1 - fees().c) * 100)} % de ton prix.</p>
+  </div></section>
+  <main class="wrap" style="max-width:760px;margin-top:-56px;padding-bottom:48px"><form class="card stack" id="ap-f">
+    <h2 style="margin:0">Ta candidature</h2>
+    <div class="grid g2"><label>Nom de créateur<input id="ap-n" required minlength="2" maxlength="80"></label><label>Téléphone / WhatsApp<input id="ap-p" type="tel" required></label></div>
+    <div class="grid g3"><label>E-mail<input id="ap-e" type="email"></label><label>Ville<input id="ap-c" maxlength="60"></label><label>Pays<select id="ap-co">${countryOptions("SN")}</select></label></div>
+    <div class="stack" style="gap:6px"><b class="small">Catégories (4 max)</b>${chipRow("ap-k", INF_CATS.map((c) => [c, c]), cats, "")}</div>
+    <div class="stack" style="gap:10px"><b class="small">Tes réseaux : remplis ceux que tu utilises (un, plusieurs ou tous)</b>
+      ${Object.entries(INF_NETS).map(([k, v]) => `<div class="row" style="gap:10px;flex-wrap:wrap;align-items:center">
+        <span class="inf-soc" style="background:${INF_BG[k]};color:${k === "snapchat" ? "#111" : "#fff"}">${netIcon(k)}</span>
+        <input data-url="${k}" type="url" placeholder="Lien de ton compte ${v}" style="flex:3 1 220px" aria-label="Lien ${v}">
+        <input data-fo="${k}" type="number" min="0" placeholder="Abonnés" style="flex:1 1 110px" aria-label="Abonnés ${v}"></div>`).join("")}</div>
+    <label>Un mot sur toi (facultatif)<textarea id="ap-m" rows="3" maxlength="800" placeholder="Ton contenu, les marques avec qui tu as déjà travaillé…"></textarea></label>
+    <button class="btn btn-primary" type="submit">Envoyer ma candidature</button>
+    <p class="small muted" style="margin:0">Après vérification, tu reçois sur WhatsApp ton lien d'invitation pour créer ton profil. <a href="#/conditions-influence">Lire les conditions</a></p>
+  </form></main></div>`;
+  bindChips($("#ap-k"), cats, null, 4);
+  $("#ap-f").onsubmit = async (e) => {
+    e.preventDefault(); const b = e.submitter;
+    const nets = Object.keys(INF_NETS).map((k) => ({ network: k, url: app.querySelector(`[data-url="${k}"]`).value.trim(), followers: Number(app.querySelector(`[data-fo="${k}"]`).value) || 0 })).filter((n) => n.url);
+    if (!nets.length) return toast("Ajoute au moins un réseau avec le lien de ton compte", true);
+    if (nets.some((n) => !/^https?:\/\//i.test(n.url))) return toast("Les liens doivent commencer par https://", true);
+    busy(b, true);
+    try { await rpc("inf_apply", { p_name: $("#ap-n").value, p_phone: $("#ap-p").value, p_email: $("#ap-e").value, p_city: $("#ap-c").value, p_country: $("#ap-co").value, p_categories: cats, p_networks: nets, p_message: $("#ap-m").value });
+      app.querySelector("main").innerHTML = `<div class="card stack" style="text-align:center;padding:36px"><h2 style="margin:0">Candidature reçue 🎉</h2><p class="muted" style="margin:0">L'équipe StatuPub vérifie tes comptes et te contacte sur WhatsApp, en général sous 48 h.</p><a class="btn btn-ghost" href="#/influence">Voir l'Espace Pub Influenceur</a></div>`; }
+    catch (err) { toast(errMsg(err), true); busy(b, false); }
+  };
+}
+
+/* ==================== Messagerie marque ↔ créateur ==================== */
+let infChatTimer = null;
+async function viewInfMessages(id) {
+  clearInterval(infChatTimer);
+  app.innerHTML = `<div class="spinner"></div>`;
+  const admin = state.profile.role === "admin";
+  const list = admin ? (await rpc("inf_admin_overview")).bookings.filter((x) => x.messages > 0 || x.id === id) : await rpc("inf_my_bookings");
+  const me = state.profile.role;
+  const other = (x) => me === "annonceur" ? x.influencer_name : me === "createur" ? (x.brand_company || "Marque") : `${x.brand_company || "Marque"} ↔ ${x.influencer_name}`;
+  if (!id && list.length && window.innerWidth >= 860) id = list[0].id;
+  app.innerHTML = `<main class="wrap"><div class="page-head"><div><p class="eyebrow">Espace Pub Influenceur</p><h1 style="font-size:2rem;margin:0">Messages</h1></div>
+    <a class="btn btn-ghost btn-sm" href="${me === "annonceur" ? "#/marque" : me === "createur" ? "#/createur" : "#/admin?t=influence&s=reservations"}">Retour</a></div>
+    <div class="inbox"><div class="stack" style="gap:8px" ${id && window.innerWidth < 860 ? "hidden" : ""}>${list.length ? list.map((x) => `<a class="thread" href="#/messages/${x.id}" aria-current="${x.id === id}" style="text-decoration:none">
+      <div class="row between"><b>${esc(other(x))}</b>${x.unread ? `<span class="count" style="background:var(--saffron);color:#231705;border-radius:999px;padding:0 8px;font-size:.75rem;font-weight:700">${x.unread}</span>` : ""}</div>
+      <div class="last">${esc(x.package_title)} · ${(INF_ST[x.status] || [x.status])[0]}</div></a>`).join("") : `<div class="empty small">Pas encore de conversation. Une conversation s'ouvre avec chaque réservation.</div>`}</div>
+    <div id="ch-box">${id ? `<div class="spinner"></div>` : `<div class="empty">Choisis une conversation.</div>`}</div></div></main>`;
+  if (!id) return;
+  const box = $("#ch-box");
+  let data;
+  const paint = (keepDraft) => {
+    const b = data.booking; const draft = keepDraft ? $("#ch-t")?.value || "" : "";
+    const who = { brand: b.brand_company || "Marque", creator: b.influencer_name, admin: "StatuPub" };
+    box.innerHTML = `<div class="conv"><div class="chat-head">${infAva(b.influencer_avatar, b.influencer_name)}<div style="flex:1;min-width:0"><b>${esc(data.me === "creator" ? b.brand_company || "Marque" : data.me === "brand" ? b.influencer_name : who.brand + " ↔ " + who.creator)}</b>
+        <div class="small" style="opacity:.8">${esc(b.package_title)}${b.product ? " · " + esc(b.product) : ""}</div></div>${window.innerWidth < 860 ? `<a class="btn btn-ghost btn-sm" style="color:inherit" href="#/messages">Retour</a>` : ""}</div>
+      <div class="chat-msgs" id="ch-msgs">
+        <div class="notice info small" style="align-self:center;max-width:520px"><span>Les numéros, e-mails et liens WhatsApp sont masqués : toute la campagne et le paiement passent par StatuPub pour vous protéger tous les deux.</span></div>
+        ${data.messages.map((m) => `<div class="msg ${m.role === data.me ? "me" : "them"}">${m.role !== data.me ? `<b style="display:block;font-size:.75rem">${esc(who[m.role])}</b>` : ""}${esc(m.body)}<small>${dateTimeFr(m.at)}${m.masked ? " · contact masqué" : ""}</small></div>`).join("")}
+      </div>
+      <form class="chat-form" id="ch-f"><textarea id="ch-t" rows="1" maxlength="2000" placeholder="Écris ton message…" aria-label="Message">${esc(draft)}</textarea><button class="btn btn-primary" type="submit">Envoyer</button></form></div>`;
+    const ms = $("#ch-msgs"); ms.scrollTop = ms.scrollHeight;
+    const t = $("#ch-t");
+    t.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && window.innerWidth >= 860) { e.preventDefault(); $("#ch-f").requestSubmit(); } };
+    $("#ch-f").onsubmit = async (e) => { e.preventDefault(); const txt = t.value.trim(); if (!txt) return; const btn = e.submitter; busy(btn, true);
+      try { await rpc("inf_send_message", { p_booking: id, p_body: txt }); t.value = ""; await load(false); } catch (err) { toast(errMsg(err), true); } busy(btn, false); };
+    if (keepDraft) t.focus();
+  };
+  const load = async (keep) => { const n = await rpc("inf_messages", { p_booking: id }); const changed = !data || n.messages.length !== data.messages.length; data = n; if (changed) paint(keep); };
+  try { await load(false); } catch (e) { box.innerHTML = `<div class="notice warn">${esc(errMsg(e))}</div>`; return; }
+  const hash = location.hash;
+  infChatTimer = setInterval(() => { if (location.hash !== hash) return clearInterval(infChatTimer); if (!document.hidden) load(true).catch(() => {}); }, 6000);
 }
