@@ -23,6 +23,16 @@ const infCoverStyle = (color, banner) => banner ? `background-image:linear-gradi
   : `background:linear-gradient(135deg,${esc(color || "#0E3B36")},${esc(color || "#0E3B36")}cc 60%,#10201D)`;
 const stars = (r) => { const n = Math.round(Number(r) || 0); return `<span style="color:#C8841F" aria-label="${r ? Number(r).toFixed(1) : 0} sur 5">${"★".repeat(n)}<span style="color:var(--line)">${"★".repeat(5 - n)}</span></span>`; };
 const infBadge = (cert) => cert ? `<span class="inf-badge">✓ Certifié StatuPub</span>` : `<span class="inf-badge v">✓ Vérifié</span>`;
+const pkNets = (x) => { const n = (x.networks && x.networks.length ? x.networks : x.network && x.network !== "multi" ? [x.network] : []);
+  return n.length === 5 ? `<span class="inf-net">Tous les réseaux</span>` : n.map((k) => `<span class="inf-net">${INF_NETS[k] || k}</span>`).join(" "); };
+/* Rangée de puces à choix multiple, avec une puce « Tous » qui vide la sélection */
+const chipRow = (id, items, sel, allLabel) => `<div class="inf-chips" id="${id}" role="group">${allLabel ? `<button type="button" class="inf-chip" data-all="1" aria-pressed="${!sel.length}">${allLabel}</button>` : ""}${items.map(([k, l]) => `<button type="button" class="inf-chip" data-v="${esc(k)}" aria-pressed="${sel.includes(k)}">${esc(l)}</button>`).join("")}</div>`;
+function bindChips(el, sel, onChange, max = 99) {
+  el.onclick = (e) => { const b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.all) sel.splice(0); else { const v = b.dataset.v, i = sel.indexOf(v); if (i >= 0) sel.splice(i, 1); else if (sel.length < max) sel.push(v); else return toast(max + " maximum", true); }
+    el.querySelectorAll("[data-v]").forEach((x) => x.setAttribute("aria-pressed", String(sel.includes(x.dataset.v)))); el.querySelector("[data-all]")?.setAttribute("aria-pressed", String(!sel.length));
+    onChange?.(); };
+}
 const isBrandUser = () => state.profile?.role === "annonceur";
 const fees = () => ({ c: Number(state.settings?.inf_creator_fee ?? 0.10), b: Number(state.settings?.inf_brand_fee ?? 0.05) });
 const signedContent = async (u) => {
@@ -58,8 +68,8 @@ async function viewInfluence() {
   app.innerHTML = `<div class="spinner"></div>`;
   const list = await rpc("inf_directory");
   const see = list.some((x) => x.min_price != null) || isBrandUser() || state.profile?.role === "admin";
-  const f = { net: "", cat: "", q: "", max: "" };
-  const cats = [...new Set(list.flatMap((x) => x.categories || []))].sort();
+  const f = { nets: [], cats: [], q: "", max: "" };
+  const cats = [...new Set([...INF_CATS, ...list.flatMap((x) => x.categories || [])])];
   app.innerHTML = `<div class="inf-pro">
   <section class="inf-hero"><div class="wrap stack" style="gap:18px">
     <span class="inf-kicker">Espace Pub Influenceur · StatuPub</span>
@@ -68,8 +78,8 @@ async function viewInfluence() {
   </div></section>
   <main class="wrap stack" style="gap:28px;padding-bottom:48px">
     <form class="inf-search" id="inf-f" role="search" aria-label="Filtrer les créateurs">
-      <label>Réseau<select id="if-net"><option value="">Tous les réseaux</option>${Object.entries(INF_NETS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
-      <label>Catégorie<select id="if-cat"><option value="">Toutes</option>${cats.map((c) => `<option>${esc(c)}</option>`).join("")}</select></label>
+      <div class="stack" style="gap:6px;flex:1 1 100%"><b class="small muted">Réseaux (un, plusieurs ou tous)</b>${chipRow("if-net", Object.entries(INF_NETS), f.nets, "Tous les réseaux")}</div>
+      <div class="stack" style="gap:6px;flex:1 1 100%"><b class="small muted">Catégories</b>${chipRow("if-cat", cats.map((c) => [c, c]), f.cats, "Toutes")}</div>
       <label>Nom ou ville<input id="if-q" type="search" placeholder="Ex. : Dakar"></label>
       ${see ? `<label>Budget max (F)<input id="if-max" type="number" min="0" step="5000" placeholder="Ex. : 300000"></label>` : ""}
     </form>
@@ -93,13 +103,13 @@ async function viewInfluence() {
         <span class="small muted">${x.accepting ? "Disponible" : "Complet"}</span></div></div></a>`;
   const draw = () => {
     const q = f.q.toLowerCase(), max = Number(f.max) || 0;
-    const rows = list.filter((x) => (!f.net || (x.networks || []).some((n) => n.network === f.net)) && (!f.cat || (x.categories || []).includes(f.cat))
+    const rows = list.filter((x) => (!f.nets.length || (x.networks || []).some((n) => f.nets.includes(n.network))) && (!f.cats.length || (x.categories || []).some((c) => f.cats.includes(c)))
       && (!q || (x.name + " " + (x.city || "")).toLowerCase().includes(q)) && (!max || (x.min_price != null && x.min_price <= max)));
     $("#inf-count").textContent = rows.length + " créateur" + (rows.length > 1 ? "s" : "");
     $("#inf-grid").innerHTML = rows.length ? rows.map(card).join("") : `<div class="empty">Aucun créateur ne correspond. Essayez un autre filtre.</div>`;
   };
-  $("#if-net").onchange = (e) => { f.net = e.target.value; draw(); };
-  $("#if-cat").onchange = (e) => { f.cat = e.target.value; draw(); };
+  bindChips($("#if-net"), f.nets, draw);
+  bindChips($("#if-cat"), f.cats, draw);
   $("#if-q").oninput = (e) => { f.q = e.target.value; draw(); };
   if ($("#if-max")) $("#if-max").oninput = (e) => { f.max = e.target.value; draw(); };
   $("#inf-f").onsubmit = (e) => e.preventDefault();
@@ -165,7 +175,7 @@ async function viewInfProfile(slug) {
             ${n.verified ? `<span class="inf-badge v">✓ Chiffres vérifiés</span>` : `<span class="small muted">Vérification en cours</span>`}</div>`).join("") : `<p class="muted">Statistiques bientôt disponibles.</p>`}
         </section>
         <section class="card stack"><h2 style="margin:0">Formules</h2>
-          ${pk.length ? pk.map((x) => `<div class="inf-req"><div style="flex:1;min-width:200px"><b>${esc(x.title)}</b>${x.network ? ` <span class="inf-net">${INF_NETS[x.network] || x.network}</span>` : ""}${x.description ? `<p class="small muted" style="margin:4px 0 0">${esc(x.description)}</p>` : ""}</div>
+          ${pk.length ? pk.map((x) => `<div class="inf-req"><div style="flex:1;min-width:200px"><b>${esc(x.title)}</b> ${pkNets(x)}${x.description ? `<p class="small muted" style="margin:4px 0 0">${esc(x.description)}</p>` : ""}</div>
             ${x.on_request ? `<span class="small" style="font-weight:600">Prix sur demande</span>` : x.price != null ? `<span class="inf-price">${fcfa(x.price)} F</span>` : `<button class="btn btn-ghost btn-sm" data-ask="${esc(x.id)}">Demander le prix</button>`}</div>`).join("") : `<p class="muted">Ce créateur n'a pas encore publié de formules. Faites-lui une offre.</p>`}
           ${!p.can_see_prices ? `<p class="small muted" style="margin:0">Les prix sont visibles par les marques inscrites. <a href="#/inscription?role=annonceur">Créer mon compte marque</a></p>` : ""}
         </section>
@@ -446,25 +456,33 @@ async function crPackages(body, { me, reload }) {
   const pks = await sb.from("influencer_packages").select("*").eq("influencer_id", me.id).eq("active", true).order("sort").order("price").then((r) => r.data || []);
   const fc = fees().c;
   body.innerHTML = `<div class="row between"><p class="muted" style="margin:0">Tes formules et tes prix. Tu gardes ${Math.round((1 - fc) * 100)} % du prix affiché.</p><button class="btn btn-primary btn-sm" id="pk-add">Nouvelle formule</button></div>
-    ${pks.length ? pks.map((x) => `<div class="card inf-req"><div style="flex:1;min-width:200px"><b>${esc(x.title)}</b>${x.network ? ` <span class="inf-net">${INF_NETS[x.network]}</span>` : ""}${x.description ? `<p class="small muted" style="margin:4px 0 0">${esc(x.description)}</p>` : ""}</div>
+    ${pks.length ? pks.map((x) => `<div class="card inf-req"><div style="flex:1;min-width:200px"><b>${esc(x.title)}</b> ${pkNets(x)}${x.description ? `<p class="small muted" style="margin:4px 0 0">${esc(x.description)}</p>` : ""}</div>
       <div style="text-align:right">${x.on_request ? `<b>Sur demande</b>` : `<span class="inf-price">${fcfa(x.price)} F</span><div class="small muted">${fcfa(Math.round(x.price * (1 - fc)))} F pour toi</div>`}</div>
       <button class="btn btn-ghost btn-sm" data-ed="${x.id}">Modifier</button><button class="btn btn-ghost btn-sm" data-del="${x.id}">Retirer</button></div>`).join("") : `<div class="empty">Aucune formule. Exemple : « 1 vidéo TikTok », « 3 stories Instagram », « Pack lancement ».</div>`}`;
-  const form = (x = {}) => openModal(`<h2 style="margin:0">${x.id ? "Modifier la formule" : "Nouvelle formule"}</h2>
+  let pkSel = [];
+  const form = (x = {}) => { pkSel = [...(x.networks?.length ? x.networks : x.network && x.network !== "multi" ? [x.network] : [])]; if (pkSel.length === 5) pkSel.push("__all"); return openModal(`<h2 style="margin:0">${x.id ? "Modifier la formule" : "Nouvelle formule"}</h2>
     <form id="pk-f" class="stack">
       <label>Titre<input id="pk-t" value="${esc(x.title || "")}" required maxlength="80" placeholder="Ex. : 1 vidéo TikTok"></label>
       <label>Description<textarea id="pk-d" rows="3" maxlength="500" placeholder="Durée, nombre de publications, délai…">${esc(x.description || "")}</textarea></label>
-      <div class="grid g2"><label>Réseau<select id="pk-n"><option value="">Plusieurs réseaux</option>${Object.entries(INF_NETS).map(([k, v]) => `<option value="${k}" ${k === x.network ? "selected" : ""}>${v}</option>`).join("")}</select></label>
-        <label>Prix (F)<input id="pk-p" type="number" min="1000" step="1000" value="${x.price || ""}"></label></div>
+      <div class="stack" style="gap:6px"><b class="small">Réseaux inclus (un, plusieurs ou tous)</b>${chipRow("pk-n", [["__all", "Tous les réseaux"], ...Object.entries(INF_NETS)], pkSel, "")}</div>
+      <div class="grid g2"><label>Prix (F)<input id="pk-p" type="number" min="1000" step="1000" value="${x.price || ""}"></label></div>
       <label class="row" style="gap:8px;font-weight:500"><input type="checkbox" id="pk-r" style="width:auto" ${x.on_request ? "checked" : ""}> Prix sur demande</label>
       <p class="small muted" style="margin:0" id="pk-net"></p>
       <div class="row"><button class="btn btn-primary" type="submit">Enregistrer</button><button class="btn btn-ghost" type="button" data-close>Annuler</button></div></form>`, (m) => {
     const upd = () => { const p = Number($("#pk-p", m).value) || 0; $("#pk-p", m).disabled = $("#pk-r", m).checked; $("#pk-net", m).textContent = !$("#pk-r", m).checked && p ? `Tu recevras ${fcfa(Math.round(p * (1 - fc)))} F. La marque paiera ${fcfa(p + Math.round(p * fees().b))} F.` : ""; };
     $("#pk-p", m).oninput = $("#pk-r", m).onchange = upd; upd();
+    const all = Object.keys(INF_NETS), chips = $("#pk-n", m);
+    const paint = () => chips.querySelectorAll("[data-v]").forEach((z) => z.setAttribute("aria-pressed", String(pkSel.includes(z.dataset.v))));
+    chips.onclick = (e) => { const b = e.target.closest("[data-v]"); if (!b) return; const v = b.dataset.v;
+      if (v === "__all") pkSel = pkSel.includes("__all") ? [] : [...all, "__all"];
+      else { pkSel = pkSel.includes(v) ? pkSel.filter((z) => z !== v && z !== "__all") : [...pkSel, v]; if (all.every((k) => pkSel.includes(k)) && !pkSel.includes("__all")) pkSel.push("__all"); }
+      paint(); };
     $("#pk-f", m).onsubmit = async (e) => { e.preventDefault(); const b = e.submitter; busy(b, true);
-      try { await rpc("inf_save_package", { p_id: x.id || null, p_title: $("#pk-t", m).value, p_description: $("#pk-d", m).value, p_network: $("#pk-n", m).value || null,
+      const nets = pkSel.filter((z) => z !== "__all"); if (!nets.length) { busy(b, false); return toast("Choisis au moins un réseau", true); }
+      try { await rpc("inf_save_package", { p_id: x.id || null, p_title: $("#pk-t", m).value, p_description: $("#pk-d", m).value, p_network: null, p_networks: nets,
         p_price: $("#pk-r", m).checked ? 0 : Number($("#pk-p", m).value) || 0, p_on_request: $("#pk-r", m).checked, p_active: true }); closeModal(); toast("Formule enregistrée"); reload(); }
       catch (err) { toast(errMsg(err), true); busy(b, false); } };
-  });
+  }); };
   $("#pk-add").onclick = () => form();
   body.querySelectorAll("[data-ed]").forEach((b) => b.onclick = () => form(pks.find((x) => x.id === b.dataset.ed)));
   body.querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => { if (!confirm("Retirer cette formule ?")) return; try { await rpc("inf_delete_package", { p_id: b.dataset.del }); reload(); } catch (e) { toast(errMsg(e), true); } });
@@ -613,19 +631,21 @@ async function adminInfluence(body, reload) {
           ${(n.proof_urls || []).map((u, k) => `<a href="${esc(u)}" target="_blank" rel="noopener">Capture ${k + 1}</a>`).join(" ")}
           ${n.verified_at ? `<span class="inf-badge v">✓</span><button class="btn btn-ghost btn-sm" data-net="${n.id}" data-ok="0">Retirer ✓</button>` : `<button class="btn btn-ok btn-sm" data-net="${n.id}" data-ok="1">Chiffres OK</button>`}</div>`).join("")}</div>` : ""}</div>`).join("")
       : `<div class="empty">Aucun créateur. Commence par inviter tes ~20 créateurs.</div>`}`;
-    $("#ai-new").onclick = () => openModal(`<h2 style="margin:0">Inviter un créateur</h2><form id="an-f" class="stack">
+    const anCats = [];
+    $("#ai-new").onclick = () => { anCats.splice(0); openModal(`<h2 style="margin:0">Inviter un créateur</h2><form id="an-f" class="stack">
       <label>Nom de créateur<input id="an-n" required minlength="2" maxlength="60"></label>
       <label>Adresse du profil (facultatif)<input id="an-s" placeholder="ex. : aminata-diallo" pattern="[a-z0-9-]{3,40}"></label>
       <div class="grid g2"><label>Téléphone<input id="an-p" type="tel"></label><label>E-mail<input id="an-e" type="email"></label></div>
       <label>Ville<input id="an-c"></label>
-      <label>Catégories (virgules)<input id="an-k" placeholder="Mode, Beauté"></label>
+      <div class="stack" style="gap:6px"><b class="small">Catégories (4 max)</b>${chipRow("an-k", INF_CATS.map((c) => [c, c]), [], "")}</div>
       <div class="row"><button class="btn btn-primary" type="submit">Créer l'invitation</button><button class="btn btn-ghost" type="button" data-close>Annuler</button></div></form>`, (m) => {
+      bindChips($("#an-k", m), anCats, null, 4);
       $("#an-f", m).onsubmit = async (e) => { e.preventDefault(); const b = e.submitter; busy(b, true);
         try { const r = await rpc("inf_admin_create", { p_name: $("#an-n", m).value, p_slug: $("#an-s", m).value, p_phone: $("#an-p", m).value, p_email: $("#an-e", m).value, p_city: $("#an-c", m).value,
-          p_categories: $("#an-k", m).value.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 4) });
+          p_categories: [...anCats] });
           const nm = $("#an-n", m).value; closeModal(); inviteBox(r.code, nm); setTimeout(reload, 50); }
         catch (err) { toast(errMsg(err), true); busy(b, false); } };
-    });
+    }); };
     box.querySelectorAll("[data-code]").forEach((b) => b.onclick = async () => { try { const c = await rpc("inf_admin_new_code", { p_id: b.dataset.code }); inviteBox(c, b.dataset.nm); } catch (e) { toast(errMsg(e), true); } });
     box.querySelectorAll("[data-st]").forEach((b) => b.onclick = () => act(b, "inf_admin_set_status", { p_id: b.dataset.id, p_status: b.dataset.st }, "Statut mis à jour"));
     box.querySelectorAll("[data-net]").forEach((b) => b.onclick = () => act(b, "inf_admin_verify_network", { p_net: b.dataset.net, p_ok: b.dataset.ok === "1" }));
