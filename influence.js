@@ -23,7 +23,7 @@ const netIcon = (k, size = 22) => `<svg width="${size}" height="${size}" viewBox
 const socBtn = (n) => { const u = netUrl(n); const st = `background:${INF_BG[n.network]};color:${n.network === "snapchat" ? "#111" : "#fff"}`;
   return u ? `<a class="inf-soc" href="${esc(u)}" target="_blank" rel="noopener" style="${st}" aria-label="${INF_NETS[n.network]} de ce créateur" title="Voir sur ${INF_NETS[n.network]}">${netIcon(n.network)}</a>`
     : `<span class="inf-soc" style="${st};opacity:.5" title="${INF_NETS[n.network]}">${netIcon(n.network)}</span>`; };
-const INF_CATS = ["Mode", "Beauté", "Humour", "Food", "Tech", "Sport", "Musique", "Lifestyle", "Famille", "Business", "Voyage", "Gaming", "Religion", "Éducation"];
+const INF_CATS = ["Cinéma", "Acteur / Actrice", "Séries TV", "Humour", "Musique", "Danse", "Mode", "Beauté", "Mannequin", "Animateur / Présentateur", "Lifestyle", "Famille", "Food", "Santé & Bien-être", "Sport", "Football", "Lutte", "Tech", "Gaming", "Business", "Immobilier", "Automobile", "Voyage", "Photo & Vidéo", "Art & Culture", "Événementiel", "Religion", "Éducation"];
 const INF_PALETTE = [["Rouge", "#B3261E"], ["Bordeaux", "#7A1F3D"], ["Orange", "#C2541A"], ["Or", "#9A6B12"], ["Vert", "#2E6B3A"], ["Émeraude", "#1F5C52"],
   ["Bleu", "#1E5AA8"], ["Bleu nuit", "#1C2A5A"], ["Violet", "#5B3A8C"], ["Rose", "#A83A6E"], ["Marron", "#6B4227"], ["Noir", "#1A1A1A"]];
 const INF_ST = {
