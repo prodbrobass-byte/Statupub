@@ -648,8 +648,8 @@ async function adminInfluence(body, reload) {
   body.querySelectorAll("[data-s]").forEach((b) => b.onclick = () => location.hash = "#/admin?t=influence&s=" + b.dataset.s);
   const box = $("#ai-b");
   const act = async (btn, fn, args, msg) => { busy(btn, true); try { await rpc(fn, args); toast(msg || "Fait"); reload(); } catch (e) { toast(errMsg(e), true); busy(btn, false); } };
-  const inviteBox = (code, name) => { const link = `https://statupub.com/#/pro/invitation/${code}`;
-    const wa = `https://wa.me/?text=${encodeURIComponent(`Bonjour ${name}, voici ton invitation pour créer ton profil créateur sur l'Espace Pub Influenceur StatuPub : ${link}`)}`;
+  const inviteBox = (code, name) => { const link = `https://statupub.com/influenceur/?c=${code}`;
+    const wa = `https://wa.me/?text=${encodeURIComponent(`Bonjour ${name} 👋\n\nTu es invité(e) à rejoindre l'Espace Pub Influenceur de StatuPub : les marques te réservent et tu es payé après chaque publication.\n\nCrée ton profil créateur ici (lien personnel, valable une fois) :\n${link}`)}`;
     openModal(`<h2 style="margin:0">Lien d'invitation</h2><p class="small muted" style="margin:0">Envoie ce lien à ${esc(name)}. Il ne sert qu'une fois.</p>
       <input readonly value="${esc(link)}" id="iv-l"><div class="row"><button class="btn btn-primary" id="iv-c">Copier</button><a class="btn btn-ok" href="${esc(wa)}" target="_blank" rel="noopener">Envoyer sur WhatsApp</a><button class="btn btn-ghost" data-close>Fermer</button></div>`,
     (m) => { $("#iv-c", m).onclick = () => copy(link); }); };
@@ -662,7 +662,7 @@ async function adminInfluence(body, reload) {
         <div class="row" style="gap:6px"><a class="btn btn-ghost btn-sm" href="https://wa.me/${tel}" target="_blank" rel="noopener">WhatsApp</a>
           ${a.status === "nouveau" ? `<button class="btn btn-ghost btn-sm" data-ap="${a.id}" data-ok="0">Refuser</button>` : ""}${a.status !== "refuse" ? `<button class="btn btn-primary btn-sm" data-ap="${a.id}" data-ok="1" data-nm="${esc(a.full_name)}">${a.status === "invite" ? "Nouveau lien" : "Inviter"}</button>` : `<span class="small muted">Refusée</span>`}</div></div>
         <div class="row" style="gap:8px;flex-wrap:wrap">${(a.networks || []).map((n) => `<a class="inf-net" style="display:inline-flex;gap:6px;align-items:center;text-decoration:none" href="${esc(n.url)}" target="_blank" rel="noopener">${netIcon(n.network, 14)} ${INF_NETS[n.network]} · ${kfmt(n.followers)}</a>`).join("")}</div>
-        ${a.message ? `<p class="small" style="margin:0">${esc(a.message)}</p>` : ""}</div>`; }).join("") : `<div class="empty">Aucune candidature. Partage le lien <b>statupub.com/#/devenir-createur</b>.</div>`;
+        ${a.message ? `<p class="small" style="margin:0">${esc(a.message)}</p>` : ""}</div>`; }).join("") : `<div class="empty">Aucune candidature. Partage le lien <b>statupub.com/influenceur/</b>.</div>`;
     box.querySelectorAll("[data-ap]").forEach((b) => b.onclick = async () => { const ok = b.dataset.ok === "1"; if (!ok && !confirm("Refuser cette candidature ?")) return; busy(b, true);
       try { const r = await rpc("inf_admin_application", { p_id: b.dataset.ap, p_invite: ok }); if (ok && r?.code) { inviteBox(r.code, b.dataset.nm); setTimeout(reload, 50); } else reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } });
   }
