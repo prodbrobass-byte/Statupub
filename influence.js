@@ -432,12 +432,58 @@ async function crCampaigns(body, { live, bk }) {
     $("#pb-go", m).onclick = async (e) => { busy(e.target, true); try { await rpc("inf_mark_published", crA({ p_id: b.dataset.pub, p_post_url: $("#pb-url", m).value.trim() })); closeModal(); toast(CR.inf ? "Publication enregistrée. Vérifie-la dans Réservations." : "Publication enregistrée. StatuPub vérifie et lance ton paiement."); crGo("campagnes"); } catch (err) { toast(errMsg(err), true); busy(e.target, false); } };
   }));
 }
+/* Recadrage d'image : glisser pour déplacer, zoom avec le curseur (ou la molette). Renvoie un Blob JPEG ou null. */
+function infCrop(file, { ratio = 1, outW = 600, round = false, title = "Recadrer l'image" } = {}) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file); const img = new Image();
+    img.onerror = () => { URL.revokeObjectURL(url); toast("Image illisible. Essaie un autre fichier (JPG ou PNG).", true); resolve(null); };
+    img.onload = () => {
+      let done = false; const finish = (v) => { if (done) return; done = true; URL.revokeObjectURL(url); resolve(v); };
+      openModal(`<h2 style="margin:0">${esc(title)}</h2><p class="small muted" style="margin:0">Fais glisser l'image pour la placer, utilise le curseur pour zoomer.</p>
+        <div id="cr-wrap" style="position:relative;width:100%;max-width:560px;margin:0 auto;touch-action:none;cursor:grab;border-radius:12px;overflow:hidden;background:#111">
+          <canvas id="cr-cv" style="display:block;width:100%"></canvas>
+          ${round ? `<div style="position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at center,transparent 0,transparent 49.5%,rgba(0,0,0,.55) 50%)"></div>` : ""}
+          <div style="position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 2px rgba(255,255,255,.7);border-radius:12px"></div></div>
+        <label class="small" style="font-weight:600">Zoom<input id="cr-z" type="range" min="1" max="4" step="0.01" value="1"></label>
+        <div class="row"><button class="btn btn-primary" id="cr-ok">Valider</button><button class="btn btn-ghost" id="cr-c">Centrer</button><button class="btn btn-ghost" id="cr-x">Annuler</button></div>`, (m) => {
+        const cv = $("#cr-cv", m), wrap = $("#cr-wrap", m), ctx = cv.getContext("2d");
+        const W = Math.min(560, wrap.clientWidth || 560), H = Math.round(W / ratio), dpr = window.devicePixelRatio || 1;
+        cv.width = W * dpr; cv.height = H * dpr; cv.style.height = H + "px"; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const base = Math.max(W / img.width, H / img.height); let z = 1, x = 0, y = 0;
+        const clamp = () => { const s = base * z, iw = img.width * s, ih = img.height * s; x = Math.min(0, Math.max(W - iw, x)); y = Math.min(0, Math.max(H - ih, y)); };
+        const center = () => { const s = base * z; x = (W - img.width * s) / 2; y = (H - img.height * s) / 2; clamp(); };
+        const draw = () => { ctx.fillStyle = "#111"; ctx.fillRect(0, 0, W, H); const s = base * z; ctx.drawImage(img, x, y, img.width * s, img.height * s); };
+        const zoomTo = (nz, cx = W / 2, cy = H / 2) => { nz = Math.max(1, Math.min(4, nz)); const k = nz / z; x = cx - (cx - x) * k; y = cy - (cy - y) * k; z = nz; clamp(); draw(); $("#cr-z", m).value = z; };
+        center(); draw();
+        let drag = null;
+        wrap.onpointerdown = (e) => { drag = { px: e.clientX, py: e.clientY, x, y }; wrap.setPointerCapture(e.pointerId); wrap.style.cursor = "grabbing"; };
+        wrap.onpointermove = (e) => { if (!drag) return; const r = W / wrap.clientWidth; x = drag.x + (e.clientX - drag.px) * r; y = drag.y + (e.clientY - drag.py) * r; clamp(); draw(); };
+        wrap.onpointerup = wrap.onpointercancel = () => { drag = null; wrap.style.cursor = "grab"; };
+        wrap.onwheel = (e) => { e.preventDefault(); const rc = wrap.getBoundingClientRect(), r = W / rc.width; zoomTo(z * (e.deltaY < 0 ? 1.08 : 0.92), (e.clientX - rc.left) * r, (e.clientY - rc.top) * r); };
+        $("#cr-z", m).oninput = (e) => zoomTo(Number(e.target.value));
+        $("#cr-c", m).onclick = () => { z = 1; $("#cr-z", m).value = 1; center(); draw(); };
+        $("#cr-x", m).onclick = () => { closeModal(); finish(null); };
+        $("#cr-ok", m).onclick = () => {
+          const oh = Math.round(outW / ratio), out = document.createElement("canvas"); out.width = outW; out.height = oh;
+          const k = outW / W, s = base * z, o = out.getContext("2d");
+          o.fillStyle = "#fff"; o.fillRect(0, 0, outW, oh); o.imageSmoothingQuality = "high";
+          o.drawImage(img, x * k, y * k, img.width * s * k, img.height * s * k);
+          out.toBlob((bl) => { closeModal(); finish(bl); }, "image/jpeg", 0.9);
+        };
+        m.addEventListener("click", (e) => { if (e.target === m) finish(null); });
+      });
+    };
+    img.src = url;
+  });
+}
+
 async function crProfile(body, { me, reload }) {
+  let avaBlob = null, banBlob = null, avaPrev = me.avatar_url, banPrev = me.banner_url;
   let color = me.color || "#0E3B36"; let cats = [...(me.categories || [])];
   body.innerHTML = `<form class="card stack" id="cp-f" style="max-width:760px">
     <h2 style="margin:0">Mon profil public</h2>
     <div class="inf-cover" id="cp-prev" style="${infCoverStyle(color, me.banner_url)};border-radius:14px">${infAva(me.avatar_url, me.display_name)}</div>
-    <div class="grid g2"><label>Photo de profil<input type="file" id="cp-ava" accept="image/*"></label><label>Bannière (facultatif)<input type="file" id="cp-ban" accept="image/*"></label></div>
+    <div class="grid g2"><label>Photo de profil (tu pourras la recadrer)<input type="file" id="cp-ava" accept="image/*"></label><label>Bannière, facultatif (tu pourras la recadrer)<input type="file" id="cp-ban" accept="image/*"></label></div>
     ${me.banner_url ? `<label class="row small" style="gap:8px"><input type="checkbox" id="cp-noban" style="width:auto"> Retirer la bannière</label>` : ""}
     <div class="stack" style="gap:8px"><b class="small">Ma couleur</b><div class="inf-sw" id="cp-sw">${INF_PALETTE.map(([n, c]) => `<button type="button" data-c="${c}" style="background:${c}" aria-label="${n}" title="${n}" aria-pressed="${c.toLowerCase() === color.toLowerCase()}"></button>`).join("")}</div></div>
     <label>Nom de créateur<input id="cp-name" value="${esc(me.display_name)}" required minlength="2" maxlength="60"></label>
@@ -447,7 +493,17 @@ async function crProfile(body, { me, reload }) {
     <div class="stack" style="gap:8px"><b class="small">Catégories (4 max)</b><div class="inf-chips" id="cp-cats">${INF_CATS.map((c) => `<button type="button" class="inf-chip" data-cat="${esc(c)}" aria-pressed="${cats.includes(c)}">${esc(c)}</button>`).join("")}</div></div>
     <label class="row" style="gap:8px;font-weight:500"><input type="checkbox" id="cp-acc" style="width:auto" ${me.accepting ? "checked" : ""}> J'accepte de nouvelles campagnes</label>
     <div class="row"><button class="btn btn-primary" type="submit">Enregistrer</button></div></form>`;
-  const prev = () => { $("#cp-prev").style.cssText = infCoverStyle(color, $("#cp-noban")?.checked ? null : me.banner_url) + ";border-radius:14px"; };
+  const prev = () => { const p = $("#cp-prev"); p.style.cssText = infCoverStyle(color, $("#cp-noban")?.checked ? null : banPrev) + ";border-radius:14px"; p.innerHTML = infAva(avaPrev, $("#cp-name")?.value || me.display_name); };
+  const pick = async (inp, kind) => { const f = inp.files[0]; inp.value = ""; if (!f) return;
+    if (!/^image\//.test(f.type)) return toast("Choisis une image (JPG ou PNG)", true);
+    if (f.size > 20 * 1024 * 1024) return toast("Image trop lourde (20 Mo max)", true);
+    const bl = await infCrop(f, kind === "avatar" ? { ratio: 1, outW: 600, round: true, title: "Recadrer la photo de profil" } : { ratio: 3, outW: 1500, title: "Recadrer la bannière" });
+    if (!bl) return;
+    const u = URL.createObjectURL(bl);
+    if (kind === "avatar") { avaBlob = bl; avaPrev = u; } else { banBlob = bl; banPrev = u; const nb = $("#cp-noban"); if (nb) nb.checked = false; }
+    prev(); toast(kind === "avatar" ? "Photo prête : clique Enregistrer" : "Bannière prête : clique Enregistrer"); };
+  $("#cp-ava").onchange = (e) => pick(e.target, "avatar");
+  $("#cp-ban").onchange = (e) => pick(e.target, "banner");
   $("#cp-sw").onclick = (e) => { const b = e.target.closest("[data-c]"); if (!b) return; color = b.dataset.c; $("#cp-sw").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); prev(); };
   $("#cp-cats").onclick = (e) => { const b = e.target.closest("[data-cat]"); if (!b) return; const c = b.dataset.cat;
     if (cats.includes(c)) cats = cats.filter((x) => x !== c); else if (cats.length < 4) cats.push(c); else return toast("4 catégories maximum", true);
@@ -456,8 +512,8 @@ async function crProfile(body, { me, reload }) {
   $("#cp-f").onsubmit = async (e) => {
     e.preventDefault(); const b = e.submitter; busy(b, true);
     try {
-      const up = async (inp, kind) => { const f = $(inp).files[0]; if (!f) return ""; if (f.size > 8 * 1024 * 1024) throw new Error("Image trop lourde (8 Mo max)"); return infUpload("influence", `${me.id}/${kind}-${Date.now()}.${extOf(f)}`, f); };
-      const ava = await up("#cp-ava", "avatar"), ban = $("#cp-noban")?.checked ? "-" : await up("#cp-ban", "banner");
+      const up = async (bl, kind) => bl ? infUpload("influence", `${me.id}/${kind}-${Date.now()}.jpg`, new File([bl], kind + ".jpg", { type: "image/jpeg" })) : "";
+      const ava = await up(avaBlob, "avatar"), ban = $("#cp-noban")?.checked ? "-" : await up(banBlob, "banner");
       await rpc("inf_update_profile", crA({ p_name: $("#cp-name").value, p_bio: $("#cp-bio").value, p_city: $("#cp-city").value, p_country: $("#cp-country").value,
         p_languages: $("#cp-lang").value.split(",").map((s) => s.trim()).filter(Boolean), p_categories: cats, p_color: color, p_avatar: ava, p_banner: ban, p_accepting: $("#cp-acc").checked }));
       toast("Profil enregistré"); reload();
