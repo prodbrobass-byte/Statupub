@@ -1,0 +1,678 @@
+/* ==================== Espace Pub Influenceur ====================
+   Chargé après le script principal : utilise $, app, state, sb, rpc, esc, fcfa, money,
+   dateTimeFr, toast, errMsg, busy, openModal, closeModal, copy, rechargeModal. */
+/* global $, app, state, sb, rpc, esc, fcfa, money, dateTimeFr, toast, errMsg, busy, openModal, closeModal, copy, rechargeModal, countryOptions, COUNTRIES */
+
+const INF_NETS = { tiktok: "TikTok", instagram: "Instagram", snapchat: "Snapchat", youtube: "YouTube", facebook: "Facebook" };
+const INF_CATS = ["Mode", "Beauté", "Humour", "Food", "Tech", "Sport", "Musique", "Lifestyle", "Famille", "Business", "Voyage", "Gaming", "Religion", "Éducation"];
+const INF_PALETTE = [["Rouge", "#B3261E"], ["Bordeaux", "#7A1F3D"], ["Orange", "#C2541A"], ["Or", "#9A6B12"], ["Vert", "#2E6B3A"], ["Émeraude", "#1F5C52"],
+  ["Bleu", "#1E5AA8"], ["Bleu nuit", "#1C2A5A"], ["Violet", "#5B3A8C"], ["Rose", "#A83A6E"], ["Marron", "#6B4227"], ["Noir", "#1A1A1A"]];
+const INF_ST = {
+  awaiting_creator: ["En attente du créateur", "#F1F1EE", "#4A4A44"], accepted: ["Acceptée · en création", "#E7F1EE", "#0E3B36"],
+  refused: ["Refusée", "#F6E1DD", "#8A3B2E"], expired: ["Expirée · remboursée", "#F1F1EE", "#4A4A44"],
+  content_submitted: ["Vidéo à valider", "#FFF1DB", "#7A4E0C"], changes_requested: ["Retouche demandée", "#FFF1DB", "#7A4E0C"],
+  content_approved: ["Validée · à publier", "#E8EEF8", "#1E4A8A"], published: ["Publiée · vérification", "#E8EEF8", "#1E4A8A"],
+  verified: ["Terminée", "#E3F3EA", "#145049"], paid_out: ["Terminée · créateur payé", "#E3F3EA", "#145049"],
+  cancelled: ["Annulée", "#F1F1EE", "#4A4A44"], disputed: ["Litige en cours", "#F6E1DD", "#8A3B2E"],
+};
+const infSt = (s) => { const [t, bg, fg] = INF_ST[s] || [s, "#F1F1EE", "#4A4A44"]; return `<span class="inf-status" style="background:${bg};color:${fg}">${t}</span>`; };
+const kfmt = (n) => { n = Number(n) || 0; if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(".", ",") + " M"; if (n >= 1e3) return Math.round(n / 1e3) + " K"; return String(n); };
+const infIni = (name) => esc(String(name || "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase());
+const infAva = (img, name, cls = "") => `<span class="inf-ava ${cls}">${img ? `<img src="${esc(img)}" alt="" loading="lazy">` : infIni(name)}</span>`;
+const infCoverStyle = (color, banner) => banner ? `background-image:linear-gradient(180deg,transparent 40%,rgba(0,0,0,.45)),url('${esc(banner)}');background-color:${esc(color)}`
+  : `background:linear-gradient(135deg,${esc(color || "#0E3B36")},${esc(color || "#0E3B36")}cc 60%,#10201D)`;
+const stars = (r) => { const n = Math.round(Number(r) || 0); return `<span style="color:#C8841F" aria-label="${r ? Number(r).toFixed(1) : 0} sur 5">${"★".repeat(n)}<span style="color:var(--line)">${"★".repeat(5 - n)}</span></span>`; };
+const infBadge = (cert) => cert ? `<span class="inf-badge">✓ Certifié StatuPub</span>` : `<span class="inf-badge v">✓ Vérifié</span>`;
+const isBrandUser = () => state.profile?.role === "annonceur";
+const fees = () => ({ c: Number(state.settings?.inf_creator_fee ?? 0.10), b: Number(state.settings?.inf_brand_fee ?? 0.05) });
+const signedContent = async (u) => {
+  if (!u) return null;
+  if (!u.startsWith("sb:")) return u;
+  const { data } = await sb.storage.from("influence-content").createSignedUrl(u.slice(3), 3600);
+  return data?.signedUrl || null;
+};
+const isVideo = (u) => /\.(mp4|mov|webm|m4v)(\?|$)/i.test(u || "");
+const extOf = (f) => (f.name.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5);
+async function infUpload(bucket, path, file) {
+  const { error } = await sb.storage.from(bucket).upload(path, file, { contentType: file.type, upsert: false });
+  if (error) throw error;
+  return bucket === "influence" ? sb.storage.from(bucket).getPublicUrl(path).data.publicUrl : "sb:" + path;
+}
+
+/* ---------- Ruban « Nos influenceurs » (accueil) ---------- */
+async function loadInfRibbon() {
+  const box = $("#home-inf"); if (!box) return;
+  let list = [];
+  try { list = await rpc("inf_ribbon"); } catch { return; }
+  if (!list?.length || !document.body.contains(box)) return;
+  const pills = list.length < 6 ? [...list, ...list, ...list] : list;
+  const pill = (x, hid) => `<a class="inf-pill" href="#/influence/${esc(x.slug)}" ${hid ? 'aria-hidden="true" tabindex="-1"' : ""}>${infAva(x.avatar, x.name)}<span><b>${esc(x.name)}</b>${x.certified ? " ✓" : ""}<small>${esc(x.cat || "Créateur")}</small></span></a>`;
+  box.innerHTML = `<section class="inf-ribbon" aria-labelledby="inf-rb-h"><div class="wrap row between" style="margin-bottom:18px;flex-wrap:wrap;gap:12px">
+      <div><p class="eyebrow" style="color:var(--saffron)">Espace Pub Influenceur</p><h2 id="inf-rb-h" style="margin:4px 0 0">Nos influenceurs</h2></div>
+      <a class="btn btn-primary btn-sm" href="#/influence">Voir tous les créateurs</a></div>
+    <div class="reviews" style="--rv-dur:${Math.max(25, pills.length * 5)}s" tabindex="0" aria-label="Nos influenceurs, défilement automatique"><div class="reviews-track">${pills.map((x) => pill(x)).join("")}${pills.map((x) => pill(x, true)).join("")}</div></div></section>`;
+}
+
+/* ---------- Annuaire public ---------- */
+async function viewInfluence() {
+  app.innerHTML = `<div class="spinner"></div>`;
+  const list = await rpc("inf_directory");
+  const see = list.some((x) => x.min_price != null) || isBrandUser() || state.profile?.role === "admin";
+  const f = { net: "", cat: "", q: "", max: "" };
+  const cats = [...new Set(list.flatMap((x) => x.categories || []))].sort();
+  app.innerHTML = `<div class="inf-pro">
+  <section class="inf-hero"><div class="wrap stack" style="gap:18px">
+    <span class="inf-kicker">Espace Pub Influenceur · StatuPub</span>
+    <h1>Réservez les plus grands créateurs d'Afrique, en toute confiance.</h1>
+    <p>Des créateurs vérifiés de plus de 200 000 abonnés. Prix clairs, paiement sécurisé : le créateur n'est payé qu'après la publication.</p>
+  </div></section>
+  <main class="wrap stack" style="gap:28px;padding-bottom:48px">
+    <form class="inf-search" id="inf-f" role="search" aria-label="Filtrer les créateurs">
+      <label>Réseau<select id="if-net"><option value="">Tous les réseaux</option>${Object.entries(INF_NETS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
+      <label>Catégorie<select id="if-cat"><option value="">Toutes</option>${cats.map((c) => `<option>${esc(c)}</option>`).join("")}</select></label>
+      <label>Nom ou ville<input id="if-q" type="search" placeholder="Ex. : Dakar"></label>
+      ${see ? `<label>Budget max (F)<input id="if-max" type="number" min="0" step="5000" placeholder="Ex. : 300000"></label>` : ""}
+    </form>
+    ${!see ? `<div class="notice info"><div><b>Les prix sont réservés aux marques inscrites.</b><p class="small muted">Créez votre compte entreprise gratuitement pour voir les tarifs et réserver, ou demandez un prix sur le profil d'un créateur.</p></div><a class="btn btn-ink btn-sm" href="#/inscription?role=annonceur">Créer mon compte marque</a></div>` : ""}
+    <div class="row between"><h2 style="margin:0" id="inf-count"></h2>${isBrandUser() ? `<a class="btn btn-ghost btn-sm" href="#/marque">Mes réservations</a>` : ""}</div>
+    <div class="inf-grid" id="inf-grid"></div>
+    <section class="stack" aria-labelledby="inf-how"><h2 id="inf-how">Comment ça marche</h2><div class="inf-steps">
+      ${[["Choisissez", "Filtrez par réseau, catégorie et budget. Chaque chiffre est vérifié par StatuPub."], ["Réservez", "Choisissez une formule ou faites une offre. Votre argent est bloqué, pas encore versé."], ["Validez", "Le créateur vous envoie la vidéo avant publication. Vous la validez ou demandez une retouche."], ["Payez après", "Le créateur est payé seulement quand la publication est en ligne et vérifiée."]]
+        .map(([t, d], i) => `<div class="inf-step"><b class="n">${i + 1}</b><b>${t}</b><p class="small muted" style="margin:0">${d}</p></div>`).join("")}
+    </div></section>
+    <section class="inf-fees"><div class="stack" style="gap:8px;max-width:560px"><h2 style="margin:0">Une commission simple et visible</h2><p style="margin:0;color:#CFE0DB">Pas de frais cachés. La marque paie le prix du créateur plus ${Math.round(fees().b * 100)} % de frais de service. Le créateur garde ${Math.round((1 - fees().c) * 100)} % de son prix.</p></div>
+      <div class="row" style="gap:28px"><div><div class="big">${Math.round(fees().b * 100)} %</div><div class="small">frais de service marque</div></div><div><div class="big">${Math.round((1 - fees().c) * 100)} %</div><div class="small">gardés par le créateur</div></div></div></section>
+  </main></div>`;
+  const card = (x) => `<a class="inf-card" href="#/influence/${esc(x.slug)}">
+    <div class="inf-cover" style="${infCoverStyle(x.color, x.banner)}">${x.certified ? infBadge(true) : ""}${infAva(x.avatar, x.name)}</div>
+    <div class="inf-body"><h3>${esc(x.name)}</h3>
+      <div class="small muted">${esc([x.city, (x.categories || []).slice(0, 2).join(" · ")].filter(Boolean).join(" · "))}</div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">${(x.networks || []).slice(0, 4).map((n) => `<span class="inf-net">${INF_NETS[n.network] || n.network} ${kfmt(n.followers)}</span>`).join("")}</div>
+      <div class="small">${x.reviews ? `${stars(x.rating)} <b>${Number(x.rating).toFixed(1)}</b> <span class="muted">(${x.reviews} avis)</span>` : `<span class="muted">Nouveau sur StatuPub</span>`}</div>
+      <div class="inf-foot">${x.min_price != null ? `<span><span class="small muted">dès</span> <span class="inf-price">${fcfa(x.min_price)} F</span></span>` : `<span class="small" style="font-weight:600">Demander le prix</span>`}
+        <span class="small muted">${x.accepting ? "Disponible" : "Complet"}</span></div></div></a>`;
+  const draw = () => {
+    const q = f.q.toLowerCase(), max = Number(f.max) || 0;
+    const rows = list.filter((x) => (!f.net || (x.networks || []).some((n) => n.network === f.net)) && (!f.cat || (x.categories || []).includes(f.cat))
+      && (!q || (x.name + " " + (x.city || "")).toLowerCase().includes(q)) && (!max || (x.min_price != null && x.min_price <= max)));
+    $("#inf-count").textContent = rows.length + " créateur" + (rows.length > 1 ? "s" : "");
+    $("#inf-grid").innerHTML = rows.length ? rows.map(card).join("") : `<div class="empty">Aucun créateur ne correspond. Essayez un autre filtre.</div>`;
+  };
+  $("#if-net").onchange = (e) => { f.net = e.target.value; draw(); };
+  $("#if-cat").onchange = (e) => { f.cat = e.target.value; draw(); };
+  $("#if-q").oninput = (e) => { f.q = e.target.value; draw(); };
+  if ($("#if-max")) $("#if-max").oninput = (e) => { f.max = e.target.value; draw(); };
+  $("#inf-f").onsubmit = (e) => e.preventDefault();
+  draw();
+}
+
+/* ---------- Demande de prix (visiteur) ---------- */
+function infPriceModal(p, pkg) {
+  openModal(`<h2 style="margin:0">Demander le prix</h2>
+    <p class="muted small" style="margin:0">${esc(p.name)}${pkg ? " · " + esc(pkg.title) : ""}. L'équipe StatuPub vous rappelle avec le tarif, généralement le jour même.</p>
+    <form id="pr-f" class="stack">
+      <label>Entreprise<input id="pr-co" required maxlength="100"></label>
+      <label>Votre nom<input id="pr-nm" maxlength="80"></label>
+      <div class="grid g2"><label>Téléphone / WhatsApp<input id="pr-ph" type="tel" required></label><label>E-mail<input id="pr-em" type="email"></label></div>
+      <label>Votre besoin (facultatif)<textarea id="pr-ms" rows="3" maxlength="600" placeholder="Produit, période, budget…"></textarea></label>
+      <div class="row"><button class="btn btn-primary" type="submit">Envoyer ma demande</button><button class="btn btn-ghost" type="button" data-close>Annuler</button></div>
+      <p class="small muted" style="margin:0">Vous avez une entreprise ? <a href="#/inscription?role=annonceur">Créez votre compte marque</a> pour voir tous les prix.</p>
+    </form>`, (m) => {
+    $("#pr-f", m).onsubmit = async (e) => {
+      e.preventDefault(); const b = e.submitter; busy(b, true);
+      try {
+        await rpc("inf_request_price", { p_influencer: p.id, p_package: pkg?.id || null, p_company: $("#pr-co", m).value, p_name: $("#pr-nm", m).value,
+          p_phone: $("#pr-ph", m).value, p_email: $("#pr-em", m).value, p_message: $("#pr-ms", m).value });
+        closeModal(); toast("Demande envoyée. Nous vous rappelons très vite.");
+      } catch (err) { toast(errMsg(err), true); busy(b, false); }
+    };
+  });
+}
+
+/* ---------- Profil public d'un créateur ---------- */
+async function viewInfProfile(slug) {
+  app.innerHTML = `<div class="spinner"></div>`;
+  const p = await rpc("inf_profile", { p_slug: slug });
+  if (!p) { app.innerHTML = `<main class="wrap"><div class="empty">Ce créateur n'existe pas ou n'est plus visible. <a href="#/influence">Voir tous les créateurs</a></div></main>`; return; }
+  const brand = isBrandUser() ? await sb.from("brands").select("id, company, verified_at").eq("id", state.session.user.id).maybeSingle().then((r) => r.data) : null;
+  const wallet = brand ? await rpc("annonceur_wallet").then((r) => r[0]).catch(() => null) : null;
+  const pk = (p.packages || []);
+  const busySet = new Set(p.busy || []);
+  const days = []; for (let i = 0; i < 21; i++) { const d = new Date(); d.setDate(d.getDate() + i); days.push(d); }
+  const aud = (a) => { if (!a || typeof a !== "object") return ""; const t = Object.entries(a).filter(([, v]) => v !== "" && v != null); return t.length ? `<div class="small muted">${t.map(([k, v]) => `${esc(k)} : ${esc(v)}`).join(" · ")}</div>` : ""; };
+  const reach = (p.networks || []).reduce((s, n) => s + (Number(n.followers) || 0), 0);
+  app.innerHTML = `<div class="inf-pro" style="--c:${esc(p.color)}">
+    <div class="inf-banner" style="${infCoverStyle(p.color, p.banner)}"></div>
+    <main class="wrap" style="padding-bottom:48px"><div class="inf-layout">
+      <div class="inf-main">
+        <section class="card stack" style="gap:14px">
+          <div class="row" style="gap:18px;align-items:flex-end;flex-wrap:wrap">${infAva(p.avatar, p.name, "lg")}
+            <div class="stack" style="gap:6px;flex:1;min-width:220px"><div class="row" style="gap:10px;flex-wrap:wrap"><h1 style="margin:0;font-size:2rem">${esc(p.name)}</h1>${p.status === "verified" || p.status === "certified" ? infBadge(p.certified) : `<span class="inf-status" style="background:#FFF1DB;color:#7A4E0C">Aperçu · profil non publié</span>`}</div>
+              <div class="muted">${esc([p.city, COUNTRIES?.[p.country]?.name || p.country].filter(Boolean).join(", "))}${(p.languages || []).length ? " · " + esc(p.languages.join(", ")) : ""}</div>
+              <div class="row" style="gap:6px;flex-wrap:wrap">${(p.categories || []).map((c) => `<span class="inf-net">${esc(c)}</span>`).join("")}</div></div></div>
+          <div class="grid g4">
+            <div class="kpi"><span class="eyebrow">Audience totale</span><span class="num">${kfmt(reach)}</span></div>
+            <div class="kpi"><span class="eyebrow">Note</span><span class="num">${p.reviews_count ? Number(p.rating).toFixed(1) + " ★" : "—"}</span><span class="small muted">${p.reviews_count} avis</span></div>
+            <div class="kpi"><span class="eyebrow">Campagnes</span><span class="num">${p.jobs || 0}</span><span class="small muted">réalisées</span></div>
+            <div class="kpi"><span class="eyebrow">Statut</span><span class="num" style="font-size:1.1rem">${p.accepting ? "Disponible" : "Complet"}</span></div>
+          </div>
+          ${p.bio ? `<p style="margin:0;line-height:1.6">${esc(p.bio)}</p>` : ""}
+        </section>
+        <section class="card stack"><h2 style="margin:0">Réseaux et statistiques</h2>
+          ${(p.networks || []).length ? (p.networks || []).map((n) => `<div class="inf-req"><span class="inf-net" style="font-size:.9rem">${INF_NETS[n.network] || n.network}</span>
+            <div style="flex:1;min-width:180px"><b>${n.url ? `<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.handle || "Voir le compte")}</a>` : esc(n.handle || "")}</b>${aud(n.audience)}</div>
+            <div class="row" style="gap:20px"><div><b>${kfmt(n.followers)}</b><div class="small muted">abonnés</div></div>${n.avg_views ? `<div><b>${kfmt(n.avg_views)}</b><div class="small muted">vues moy.</div></div>` : ""}${n.engagement != null ? `<div><b>${String(n.engagement).replace(".", ",")} %</b><div class="small muted">engagement</div></div>` : ""}</div>
+            ${n.verified ? `<span class="inf-badge v">✓ Chiffres vérifiés</span>` : `<span class="small muted">Vérification en cours</span>`}</div>`).join("") : `<p class="muted">Statistiques bientôt disponibles.</p>`}
+        </section>
+        <section class="card stack"><h2 style="margin:0">Formules</h2>
+          ${pk.length ? pk.map((x) => `<div class="inf-req"><div style="flex:1;min-width:200px"><b>${esc(x.title)}</b>${x.network ? ` <span class="inf-net">${INF_NETS[x.network] || x.network}</span>` : ""}${x.description ? `<p class="small muted" style="margin:4px 0 0">${esc(x.description)}</p>` : ""}</div>
+            ${x.on_request ? `<span class="small" style="font-weight:600">Prix sur demande</span>` : x.price != null ? `<span class="inf-price">${fcfa(x.price)} F</span>` : `<button class="btn btn-ghost btn-sm" data-ask="${esc(x.id)}">Demander le prix</button>`}</div>`).join("") : `<p class="muted">Ce créateur n'a pas encore publié de formules. Faites-lui une offre.</p>`}
+          ${!p.can_see_prices ? `<p class="small muted" style="margin:0">Les prix sont visibles par les marques inscrites. <a href="#/inscription?role=annonceur">Créer mon compte marque</a></p>` : ""}
+        </section>
+        <section class="card stack"><h2 style="margin:0">Avis des marques</h2>
+          ${(p.reviews || []).length ? p.reviews.map((r) => `<div style="border-top:1px solid var(--line);padding-top:12px"><div class="row between"><b>${esc(r.company || "Marque")}</b>${stars(r.rating)}</div>${r.body ? `<p style="margin:6px 0 0">« ${esc(r.body)} »</p>` : ""}${r.reply ? `<p class="small muted" style="margin:6px 0 0">Réponse du créateur : ${esc(r.reply)}</p>` : ""}</div>`).join("") : `<p class="muted">Pas encore d'avis. Seules les marques qui ont réservé peuvent noter.</p>`}
+        </section>
+      </div>
+      <aside class="inf-aside"><div class="card stack" id="inf-book" style="gap:14px"></div></aside>
+    </div></main></div>`;
+  app.querySelectorAll("[data-ask]").forEach((b) => b.onclick = () => infPriceModal(p, pk.find((x) => x.id === b.dataset.ask)));
+  const box = $("#inf-book");
+  const dayStrip = `<div class="stack" style="gap:6px"><b class="small">Disponibilités (3 semaines)</b><div class="inf-days">${days.map((d) => { const k = d.toISOString().slice(0, 10); return `<span class="${busySet.has(k) ? "busy" : ""}" title="${busySet.has(k) ? "Déjà réservé" : "Libre"}">${d.getDate()}</span>`; }).join("")}</div></div>`;
+  if (state.profile?.role === "createur" || state.profile?.role === "diffuseur") {
+    box.innerHTML = `<h2 style="margin:0">Réserver ${esc(p.name)}</h2>${dayStrip}<p class="small muted" style="margin:0">Les réservations sont réservées aux comptes marque.</p>`; return;
+  }
+  if (!isBrandUser()) {
+    box.innerHTML = `<h2 style="margin:0">Travailler avec ${esc(p.name)}</h2>${dayStrip}
+      <a class="btn btn-primary" href="#/inscription?role=annonceur">Créer mon compte marque</a>
+      <a class="btn btn-ghost" href="#/connexion">J'ai déjà un compte</a>
+      <button class="btn btn-ghost" id="ib-ask">Demander le prix</button>
+      <p class="small muted" style="margin:0">Paiement sécurisé : le créateur est payé après la publication.</p>`;
+    $("#ib-ask").onclick = () => infPriceModal(p, null);
+    if (!state.profile) { try { sessionStorage.setItem("sp_after", location.hash); } catch {} }
+    return;
+  }
+  if (!brand) {
+    box.innerHTML = `<h2 style="margin:0">Une dernière étape</h2><p class="muted small" style="margin:0">Complétez votre fiche entreprise (nom, NINEA) pour réserver des créateurs.</p>
+      <a class="btn btn-primary" href="#/marque">Compléter ma fiche entreprise</a>${dayStrip}`;
+    try { sessionStorage.setItem("sp_inf_back", location.hash); } catch {}
+    return;
+  }
+  const bookable = pk.filter((x) => !x.on_request && x.price > 0);
+  const min = new Date(); min.setDate(min.getDate() + 2); const minS = min.toISOString().slice(0, 10);
+  box.innerHTML = `<h2 style="margin:0">Réserver ${esc(p.name)}</h2>
+    ${!p.accepting ? `<div class="notice warn small"><span>Ce créateur ne prend pas de nouvelles campagnes pour le moment.</span></div>` : ""}
+    <div class="tabs" role="tablist"><button class="tab" role="tab" aria-selected="${bookable.length ? "true" : "false"}" data-k="booking" ${bookable.length ? "" : "disabled"}>Réserver</button><button class="tab" role="tab" aria-selected="${bookable.length ? "false" : "true"}" data-k="offer">Faire une offre</button></div>
+    <form id="ib-f" class="stack" style="gap:12px">
+      <label id="ib-pk-l">Formule<select id="ib-pk">${bookable.map((x) => `<option value="${esc(x.id)}" data-price="${x.price}">${esc(x.title)} · ${fcfa(x.price)} F</option>`).join("")}${pk.filter((x) => x.on_request).map((x) => `<option value="${esc(x.id)}" data-price="0" data-req="1">${esc(x.title)} · sur demande</option>`).join("")}</select></label>
+      <label id="ib-of-l" hidden>Votre offre (F)<input id="ib-of" type="number" min="1000" step="1000" placeholder="Ex. : 150000"></label>
+      <label>Produit ou marque à promouvoir<input id="ib-prod" maxlength="120" required></label>
+      <label>Brief pour le créateur<textarea id="ib-brief" rows="4" minlength="20" maxlength="3000" required placeholder="Ce que vous voulez montrer, le message clé, ce qu'il faut éviter…"></textarea></label>
+      <label>Lien à mettre (facultatif)<input id="ib-link" type="url" placeholder="https://"></label>
+      <label>Date de publication souhaitée<input id="ib-date" type="date" min="${minS}"></label>
+      <label class="row" style="gap:8px;font-weight:500"><input type="checkbox" id="ib-val" checked style="width:auto"> Je veux valider la vidéo avant publication</label>
+      <div class="stack small" style="gap:4px;border-top:1px solid var(--line);padding-top:10px" id="ib-sum"></div>
+      <button class="btn btn-primary" type="submit" ${p.accepting ? "" : "disabled"}>Envoyer la demande</button>
+      <p class="small muted" style="margin:0">Le créateur a ${state.settings?.inf_accept_hours || 48} h pour accepter. Sinon, vous êtes remboursé automatiquement.</p>
+    </form>${dayStrip}`;
+  let kind = bookable.length ? "booking" : "offer";
+  const price = () => kind === "offer" ? Number($("#ib-of").value) || 0 : Number($("#ib-pk").selectedOptions[0]?.dataset.price) || 0;
+  const sum = () => {
+    const pr = price(), bf = Math.round(pr * fees().b), tot = pr + bf, av = Number(wallet?.available) || 0;
+    $("#ib-sum").innerHTML = `<div class="row between"><span>Prix du créateur</span><b>${fcfa(pr)} F</b></div><div class="row between"><span>Frais de service (${Math.round(fees().b * 100)} %)</span><b>${fcfa(bf)} F</b></div>
+      <div class="row between" style="font-size:1rem"><span>Total</span><b>${fcfa(tot)} F</b></div><div class="row between muted"><span>Votre solde</span><span>${fcfa(av)} F</span></div>
+      ${tot > av ? `<div class="notice warn small"><span>Solde insuffisant. <button type="button" class="btn btn-ink btn-sm" id="ib-rc">Recharger</button></span></div>` : ""}`;
+    $("#ib-rc")?.addEventListener("click", rechargeModal);
+  };
+  const setKind = (k) => {
+    kind = k; box.querySelectorAll("[data-k]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.k === k)));
+    $("#ib-of-l").hidden = k !== "offer";
+    const sel = $("#ib-pk"); sel.required = k === "booking";
+    if (k === "offer" && !sel.querySelector('option[value=""]')) sel.insertAdjacentHTML("afterbegin", `<option value="">Offre libre (sans formule)</option>`);
+    if (k === "booking") { sel.querySelector('option[value=""]')?.remove(); sel.querySelectorAll("[data-req]").forEach((o) => o.disabled = true); if (sel.selectedOptions[0]?.dataset.req) sel.value = bookable[0]?.id || ""; }
+    else sel.querySelectorAll("[data-req]").forEach((o) => o.disabled = false);
+    $("#ib-pk-l").hidden = !pk.length;
+    sum();
+  };
+  box.querySelectorAll("[data-k]").forEach((b) => b.onclick = () => setKind(b.dataset.k));
+  $("#ib-pk").onchange = sum; $("#ib-of").oninput = sum;
+  setKind(kind);
+  $("#ib-f").onsubmit = async (e) => {
+    e.preventDefault(); const b = e.submitter; busy(b, true);
+    try {
+      await rpc("inf_book", { p_influencer: p.id, p_package: $("#ib-pk").value || null, p_kind: kind, p_offer: kind === "offer" ? price() : null,
+        p_product: $("#ib-prod").value, p_brief: $("#ib-brief").value, p_link: $("#ib-link").value.trim(), p_date: $("#ib-date").value || null, p_validation: $("#ib-val").checked });
+      toast("Demande envoyée à " + p.name + " !"); location.hash = "#/marque";
+    } catch (err) { toast(errMsg(err), true); busy(b, false); }
+  };
+}
+
+/* ---------- Invitation créateur ---------- */
+const infCode = () => { try { return localStorage.getItem("sp_inv") || ""; } catch { return ""; } };
+const infCodeClear = () => { try { localStorage.removeItem("sp_inv"); } catch {} };
+/* Appelé par route() : relie le compte au profil créateur si un code est en attente. Renvoie true si la route est prise en charge. */
+async function infTryClaim() {
+  const code = infCode(); const role = state.profile?.role;
+  if (!code || !state.profile || role === "createur") { if (role === "createur") infCodeClear(); return false; }
+  if (role === "admin" || role === "annonceur") { infCodeClear(); toast(role === "annonceur" ? "Ce compte est un compte annonceur. Crée ton compte créateur avec une autre adresse e-mail." : "Code d'invitation ignoré pour le compte admin.", true); return false; }
+  try { await rpc("inf_claim", { p_code: code }); infCodeClear(); const { data } = await sb.from("profiles").select("*").eq("id", state.session.user.id).maybeSingle(); state.profile = data;
+    toast("Bienvenue dans l'Espace Pub Influenceur !"); location.hash = "#/createur?t=profil"; return true; }
+  catch (e) { infCodeClear(); toast(errMsg(e), true); return false; }
+}
+function viewInfInvite(code) {
+  code = String(code || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (code) { try { localStorage.setItem("sp_inv", code); } catch {} }
+  if (state.profile) { infTryClaim().then((ok) => { if (!ok) location.hash = "#/" + state.profile.role; }); return; }
+  app.innerHTML = `<div class="inf-pro"><section class="inf-hero"><div class="wrap stack" style="gap:16px">
+    <span class="inf-kicker">Invitation · Espace Pub Influenceur</span>
+    <h1>Bienvenue parmi les créateurs StatuPub.</h1>
+    <p>Crée ton compte créateur : ton profil, tes formules et tes prix. Les marques te réservent, tu es payé après chaque publication vérifiée. Tu gardes ${Math.round((1 - fees().c) * 100)} % de ton prix.</p>
+  </div></section>
+  <main class="wrap" style="max-width:520px;margin-top:-56px;padding-bottom:48px"><div class="card stack">
+    <div class="tabs" role="tablist"><button class="tab" role="tab" aria-selected="true" data-m="up">Créer mon compte</button><button class="tab" role="tab" aria-selected="false" data-m="in">J'ai déjà un compte</button></div>
+    <form id="iv-f" class="stack">
+      <div id="iv-up" class="stack">
+        <label>Nom de créateur<input id="iv-name" required minlength="2" maxlength="60"></label>
+        <label>Téléphone / WhatsApp<input id="iv-phone" type="tel" required></label>
+        <label>Pays<select id="iv-country">${countryOptions("SN")}</select></label>
+      </div>
+      <label>E-mail<input id="iv-email" type="email" required autocomplete="email"></label>
+      <label>Mot de passe<input id="iv-pw" type="password" required minlength="6" autocomplete="new-password"></label>
+      <p class="small muted" style="margin:0">Code d'invitation : <b>${esc(code || "—")}</b></p>
+      <button class="btn btn-primary" type="submit">Continuer</button>
+    </form></div></main></div>`;
+  let mode = "up";
+  app.querySelectorAll("[data-m]").forEach((b) => b.onclick = () => { mode = b.dataset.m; app.querySelectorAll("[data-m]").forEach((x) => x.setAttribute("aria-selected", String(x === b)));
+    $("#iv-up").hidden = mode !== "up"; $("#iv-up").querySelectorAll("input").forEach((i) => i.required = mode === "up"); $("#iv-pw").autocomplete = mode === "up" ? "new-password" : "current-password"; });
+  $("#iv-f").onsubmit = async (e) => {
+    e.preventDefault(); const b = e.submitter; busy(b, true);
+    const email = $("#iv-email").value.trim(), password = $("#iv-pw").value;
+    try {
+      if (mode === "in") { const { error } = await sb.auth.signInWithPassword({ email, password }); if (error) throw error; return; }
+      const { data, error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + location.pathname,
+        data: { role: "diffuseur", full_name: $("#iv-name").value.trim(), phone: $("#iv-phone").value.trim(), country: $("#iv-country").value } } });
+      if (error) throw error;
+      if (!data.session) { app.innerHTML = `<main class="wrap" style="max-width:560px"><div class="card stack"><h1 style="font-size:1.6rem;margin:0">Vérifie ta boîte e-mail</h1><p>Nous avons envoyé un lien à <b>${esc(email)}</b>. Clique dessus pour activer ton compte créateur. Ton invitation est gardée sur cet appareil.</p></div></main>`; }
+    } catch (err) { toast(errMsg(err), true); busy(b, false); }
+  };
+}
+
+/* ---------- Espace créateur ---------- */
+async function viewCreateur(tab = "demandes") {
+  app.innerHTML = `<div class="spinner"></div>`;
+  const [me, bk, w] = await Promise.all([rpc("inf_mine"), rpc("inf_my_bookings"), rpc("inf_creator_wallet")]);
+  if (!me?.id) { app.innerHTML = `<main class="wrap"><div class="empty">Profil créateur introuvable. Contacte StatuPub.</div></main>`; return; }
+  const req = bk.filter((x) => x.status === "awaiting_creator");
+  const live = bk.filter((x) => ["accepted", "changes_requested", "content_submitted", "content_approved", "published"].includes(x.status));
+  const tabs = [["demandes", "Demandes", req.length], ["campagnes", "Campagnes", live.filter((x) => ["accepted", "changes_requested", "content_approved"].includes(x.status)).length], ["profil", "Mon profil"], ["reseaux", "Réseaux"], ["formules", "Formules"], ["gains", "Gains"]];
+  const visible = me.status === "verified" || me.status === "certified";
+  app.innerHTML = `<main class="wrap">
+    <div class="page-head"><div class="row" style="gap:14px">${infAva(me.avatar_url, me.display_name)}<div><p class="eyebrow">Espace créateur</p><h1 style="font-size:2rem;margin:0">${esc(me.display_name)}</h1></div></div>
+      <div class="row"><a class="btn btn-ghost btn-sm" href="#/influence/${esc(me.slug)}">Voir mon profil public</a></div></div>
+    ${!visible ? `<div class="notice ${me.status === "rejected" ? "warn" : "info"}" style="margin-bottom:16px"><div><b>${me.status === "pending" ? "Profil en vérification" : me.status === "hidden" ? "Profil masqué" : "Profil refusé"}</b><p class="small muted">${me.status === "pending" ? "Complète ton profil, tes réseaux (avec captures de statistiques) et au moins une formule. StatuPub vérifie et publie ton profil." : "Contacte StatuPub pour en savoir plus."}</p></div></div>` : ""}
+    <div class="grid g4" style="margin-bottom:20px">
+      <div class="card kpi"><span class="eyebrow">En cours</span><div>${money(w.pending)}</div><span class="small muted">campagnes acceptées</span></div>
+      <div class="card kpi"><span class="eyebrow">À recevoir</span><div>${money(w.payable)}</div><span class="small muted">versé ${state.settings?.inf_payout_hours || 72} h après vérification</span></div>
+      <div class="card kpi"><span class="eyebrow">Reçu ce mois</span><div>${money(w.paid_month)}</div></div>
+      <div class="card kpi"><span class="eyebrow">Total reçu</span><div>${money(w.paid)}</div></div>
+    </div>
+    <div class="tabs" role="tablist">${tabs.map(([k, l, n]) => `<button class="tab" role="tab" aria-selected="${k === tab}" data-t="${k}">${l}${n ? `<span class="count">${n}</span>` : ""}</button>`).join("")}</div>
+    <div id="cr-body" class="stack" style="margin-top:20px"></div></main>`;
+  app.querySelectorAll("[data-t]").forEach((b) => b.onclick = () => location.hash = "#/createur?t=" + b.dataset.t);
+  const body = $("#cr-body"); const reload = () => viewCreateur(tab);
+  const fn = { demandes: crRequests, campagnes: crCampaigns, profil: crProfile, reseaux: crNetworks, formules: crPackages, gains: crGains }[tab] || crRequests;
+  try { await fn(body, { me, bk, req, live, reload }); } catch (e) { body.innerHTML = `<div class="notice warn">${esc(errMsg(e))}</div>`; }
+}
+const bkInfo = (x, side) => `<div style="flex:1;min-width:240px" class="stack small">
+  <div class="row" style="gap:8px;flex-wrap:wrap"><b style="font-size:1rem">${esc(side === "brand" ? x.influencer_name : x.brand_company || "Marque")}</b>${infSt(x.status)}${x.kind === "offer" ? `<span class="inf-net">Offre</span>` : ""}</div>
+  <div><b>${esc(x.package_title || "")}</b>${x.product ? " · " + esc(x.product) : ""}${x.publish_date ? " · publication le " + new Date(x.publish_date).toLocaleDateString("fr-FR", { day: "numeric", month: "long" }) : ""}</div>
+  ${x.brief ? `<details><summary>Brief</summary><p style="white-space:pre-wrap;margin:6px 0 0">${esc(x.brief)}</p></details>` : ""}
+  ${x.link ? `<div>Lien : <a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.link)}</a></div>` : ""}
+  ${x.brand_comment ? `<div class="notice warn small"><span>Commentaire de la marque : ${esc(x.brand_comment)}</span></div>` : ""}
+  ${x.post_url ? `<div>Publication : <a href="${esc(x.post_url)}" target="_blank" rel="noopener">voir</a></div>` : ""}</div>`;
+async function crRequests(body, { req }) {
+  body.innerHTML = req.length ? req.map((x) => `<div class="card inf-req">${bkInfo(x, "creator")}
+    <div class="stack" style="gap:8px;align-items:flex-end"><div><span class="small muted">Pour toi</span> <span class="inf-price">${fcfa(x.net)} F</span></div>
+      <span class="small muted">Réponds avant le ${dateTimeFr(x.expires_at)}</span>
+      <div class="row"><button class="btn btn-ghost btn-sm" data-no="${x.id}">Refuser</button><button class="btn btn-ok btn-sm" data-yes="${x.id}">Accepter</button></div></div></div>`).join("")
+    : `<div class="empty">Aucune demande en attente. Les nouvelles réservations arrivent ici (et en notification).</div>`;
+  body.querySelectorAll("[data-yes]").forEach((b) => b.onclick = async () => { busy(b, true);
+    try { await rpc("inf_respond", { p_id: b.dataset.yes, p_accept: true }); toast("Campagne acceptée. Au travail !"); location.hash = "#/createur?t=campagnes"; } catch (e) { toast(errMsg(e), true); busy(b, false); } });
+  body.querySelectorAll("[data-no]").forEach((b) => b.onclick = () => openModal(`<h2 style="margin:0">Refuser la demande</h2><p class="small muted" style="margin:0">La marque est remboursée intégralement.</p>
+    <label>Raison (facultatif)<textarea id="rf-r" rows="3" maxlength="300" placeholder="Ex. : pas disponible à cette date"></textarea></label>
+    <div class="row"><button class="btn btn-bad" id="rf-go">Refuser</button><button class="btn btn-ghost" data-close>Annuler</button></div>`, (m) => {
+    $("#rf-go", m).onclick = async (e) => { busy(e.target, true); try { await rpc("inf_respond", { p_id: b.dataset.no, p_accept: false, p_reason: $("#rf-r", m).value }); closeModal(); toast("Demande refusée."); viewCreateur("demandes"); } catch (err) { toast(errMsg(err), true); busy(e.target, false); } };
+  }));
+}
+async function crCampaigns(body, { live, bk }) {
+  const done = bk.filter((x) => ["verified", "paid_out", "disputed"].includes(x.status));
+  const act = (x) => {
+    if (x.status === "accepted" || x.status === "changes_requested") return `<button class="btn btn-primary btn-sm" data-send="${x.id}">Envoyer la vidéo</button>`;
+    if (x.status === "content_submitted") return `<span class="small muted">En attente de validation par la marque (auto-validée après ${state.settings?.inf_validate_hours || 48} h)</span>`;
+    if (x.status === "content_approved") return `<button class="btn btn-ok btn-sm" data-pub="${x.id}">J'ai publié : ajouter le lien</button>`;
+    if (x.status === "published") return `<span class="small muted">StatuPub vérifie la publication. Garde-la en ligne au moins 30 jours.</span>`;
+    return "";
+  };
+  body.innerHTML = `${live.length ? live.map((x) => `<div class="card inf-req">${bkInfo(x, "creator")}<div class="stack" style="gap:8px;align-items:flex-end"><span class="inf-price">${fcfa(x.net)} F</span>${act(x)}</div></div>`).join("") : `<div class="empty">Aucune campagne en cours.</div>`}
+    <div class="notice info small"><span>Rappel : mention <b>#pub</b> ou « partenariat rémunéré » obligatoire. La publication doit rester en ligne au moins 30 jours.</span></div>
+    ${done.length ? `<h2>Terminées</h2>${done.map((x) => `<div class="card inf-req">${bkInfo(x, "creator")}<span class="inf-price">${fcfa(x.net)} F</span></div>`).join("")}` : ""}`;
+  body.querySelectorAll("[data-send]").forEach((b) => b.onclick = () => openModal(`<h2 style="margin:0">Envoyer la vidéo</h2>
+    <p class="small muted" style="margin:0">Envoie le fichier (200 Mo max) ou un lien (Google Drive, WeTransfer…). La marque la regarde avant publication.</p>
+    <label>Fichier vidéo ou image<input id="sv-file" type="file" accept="video/*,image/*"></label>
+    <label>Ou lien<input id="sv-link" type="url" placeholder="https://"></label>
+    <label>Note pour la marque (facultatif)<textarea id="sv-note" rows="2" maxlength="600"></textarea></label>
+    <div class="row"><button class="btn btn-primary" id="sv-go">Envoyer</button><button class="btn btn-ghost" data-close>Annuler</button></div>`, (m) => {
+    $("#sv-go", m).onclick = async (e) => {
+      const btn = e.target; const f = $("#sv-file", m).files[0]; let url = $("#sv-link", m).value.trim();
+      if (!f && !/^https?:\/\//i.test(url)) return toast("Ajoute la vidéo ou un lien https://", true);
+      if (f && f.size > 200 * 1024 * 1024) return toast("Fichier trop lourd (200 Mo max). Envoie plutôt un lien.", true);
+      busy(btn, true);
+      try { if (f) { btn.textContent = "Envoi du fichier…"; url = await infUpload("influence-content", `${b.dataset.send}/${Date.now()}.${extOf(f)}`, f); }
+        await rpc("inf_submit_content", { p_id: b.dataset.send, p_url: url, p_note: $("#sv-note", m).value }); closeModal(); toast("Vidéo envoyée à la marque."); viewCreateur("campagnes"); }
+      catch (err) { toast(errMsg(err), true); busy(btn, false); }
+    };
+  }));
+  body.querySelectorAll("[data-pub]").forEach((b) => b.onclick = () => openModal(`<h2 style="margin:0">Lien de la publication</h2>
+    <label>Lien du post (TikTok, Instagram…)<input id="pb-url" type="url" placeholder="https://" required></label>
+    <div class="row"><button class="btn btn-ok" id="pb-go">Confirmer</button><button class="btn btn-ghost" data-close>Annuler</button></div>`, (m) => {
+    $("#pb-go", m).onclick = async (e) => { busy(e.target, true); try { await rpc("inf_mark_published", { p_id: b.dataset.pub, p_post_url: $("#pb-url", m).value.trim() }); closeModal(); toast("Publication enregistrée. StatuPub vérifie et lance ton paiement."); viewCreateur("campagnes"); } catch (err) { toast(errMsg(err), true); busy(e.target, false); } };
+  }));
+}
+async function crProfile(body, { me, reload }) {
+  let color = me.color || "#0E3B36"; let cats = [...(me.categories || [])];
+  body.innerHTML = `<form class="card stack" id="cp-f" style="max-width:760px">
+    <h2 style="margin:0">Mon profil public</h2>
+    <div class="inf-cover" id="cp-prev" style="${infCoverStyle(color, me.banner_url)};border-radius:14px">${infAva(me.avatar_url, me.display_name)}</div>
+    <div class="grid g2"><label>Photo de profil<input type="file" id="cp-ava" accept="image/*"></label><label>Bannière (facultatif)<input type="file" id="cp-ban" accept="image/*"></label></div>
+    ${me.banner_url ? `<label class="row small" style="gap:8px"><input type="checkbox" id="cp-noban" style="width:auto"> Retirer la bannière</label>` : ""}
+    <div class="stack" style="gap:8px"><b class="small">Ma couleur</b><div class="inf-sw" id="cp-sw">${INF_PALETTE.map(([n, c]) => `<button type="button" data-c="${c}" style="background:${c}" aria-label="${n}" title="${n}" aria-pressed="${c.toLowerCase() === color.toLowerCase()}"></button>`).join("")}</div></div>
+    <label>Nom de créateur<input id="cp-name" value="${esc(me.display_name)}" required minlength="2" maxlength="60"></label>
+    <label>Présentation<textarea id="cp-bio" rows="4" maxlength="800" placeholder="Qui tu es, ton style, ton audience…">${esc(me.bio || "")}</textarea></label>
+    <div class="grid g2"><label>Ville<input id="cp-city" value="${esc(me.city || "")}" maxlength="60"></label><label>Pays<select id="cp-country">${countryOptions(me.country || "SN")}</select></label></div>
+    <label>Langues (séparées par des virgules)<input id="cp-lang" value="${esc((me.languages || []).join(", "))}" placeholder="Français, Wolof"></label>
+    <div class="stack" style="gap:8px"><b class="small">Catégories (4 max)</b><div class="inf-chips" id="cp-cats">${INF_CATS.map((c) => `<button type="button" class="inf-chip" data-cat="${esc(c)}" aria-pressed="${cats.includes(c)}">${esc(c)}</button>`).join("")}</div></div>
+    <label class="row" style="gap:8px;font-weight:500"><input type="checkbox" id="cp-acc" style="width:auto" ${me.accepting ? "checked" : ""}> J'accepte de nouvelles campagnes</label>
+    <div class="row"><button class="btn btn-primary" type="submit">Enregistrer</button></div></form>`;
+  const prev = () => { $("#cp-prev").style.cssText = infCoverStyle(color, $("#cp-noban")?.checked ? null : me.banner_url) + ";border-radius:14px"; };
+  $("#cp-sw").onclick = (e) => { const b = e.target.closest("[data-c]"); if (!b) return; color = b.dataset.c; $("#cp-sw").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); prev(); };
+  $("#cp-cats").onclick = (e) => { const b = e.target.closest("[data-cat]"); if (!b) return; const c = b.dataset.cat;
+    if (cats.includes(c)) cats = cats.filter((x) => x !== c); else if (cats.length < 4) cats.push(c); else return toast("4 catégories maximum", true);
+    b.setAttribute("aria-pressed", String(cats.includes(c))); };
+  $("#cp-noban")?.addEventListener("change", prev);
+  $("#cp-f").onsubmit = async (e) => {
+    e.preventDefault(); const b = e.submitter; busy(b, true);
+    try {
+      const up = async (inp, kind) => { const f = $(inp).files[0]; if (!f) return ""; if (f.size > 8 * 1024 * 1024) throw new Error("Image trop lourde (8 Mo max)"); return infUpload("influence", `${me.id}/${kind}-${Date.now()}.${extOf(f)}`, f); };
+      const ava = await up("#cp-ava", "avatar"), ban = $("#cp-noban")?.checked ? "-" : await up("#cp-ban", "banner");
+      await rpc("inf_update_profile", { p_name: $("#cp-name").value, p_bio: $("#cp-bio").value, p_city: $("#cp-city").value, p_country: $("#cp-country").value,
+        p_languages: $("#cp-lang").value.split(",").map((s) => s.trim()).filter(Boolean), p_categories: cats, p_color: color, p_avatar: ava, p_banner: ban, p_accepting: $("#cp-acc").checked });
+      toast("Profil enregistré"); reload();
+    } catch (err) { toast(errMsg(err), true); busy(b, false); }
+  };
+}
+async function crNetworks(body, { me, reload }) {
+  const nets = await sb.from("influencer_networks").select("*").eq("influencer_id", me.id).order("followers", { ascending: false }).then((r) => r.data || []);
+  body.innerHTML = `<div class="row between"><p class="muted" style="margin:0">Ajoute tes comptes avec des captures récentes de tes statistiques. StatuPub vérifie chaque chiffre.</p><button class="btn btn-primary btn-sm" id="nw-add">Ajouter un réseau</button></div>
+    ${nets.length ? nets.map((n) => `<div class="card inf-req"><span class="inf-net" style="font-size:.9rem">${INF_NETS[n.network]}</span><div style="flex:1;min-width:200px"><b>${esc(n.handle || "")}</b><div class="small muted">${kfmt(n.followers)} abonnés${n.avg_views ? " · " + kfmt(n.avg_views) + " vues moy." : ""}${n.engagement != null ? " · " + n.engagement + " %" : ""} · ${(n.proof_urls || []).length} capture(s)</div></div>
+      ${n.verified_at ? `<span class="inf-badge v">✓ Vérifié</span>` : `<span class="small muted">En vérification</span>`}<button class="btn btn-ghost btn-sm" data-ed="${n.network}">Modifier</button><button class="btn btn-ghost btn-sm" data-del="${n.network}">Retirer</button></div>`).join("") : `<div class="empty">Aucun réseau ajouté.</div>`}`;
+  const form = (n = {}) => openModal(`<h2 style="margin:0">${n.network ? "Modifier " + INF_NETS[n.network] : "Ajouter un réseau"}</h2>
+    <form id="nw-f" class="stack">
+      <label>Réseau<select id="nw-net" ${n.network ? "disabled" : ""}>${Object.entries(INF_NETS).map(([k, v]) => `<option value="${k}" ${k === n.network ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+      <div class="grid g2"><label>Nom du compte<input id="nw-h" value="${esc(n.handle || "")}" placeholder="@moncompte" required></label><label>Lien du compte<input id="nw-u" type="url" value="${esc(n.url || "")}" placeholder="https://"></label></div>
+      <div class="grid g3"><label>Abonnés<input id="nw-fo" type="number" min="0" value="${n.followers ?? ""}" required></label><label>Vues moyennes<input id="nw-av" type="number" min="0" value="${n.avg_views ?? ""}"></label><label>Engagement (%)<input id="nw-en" type="number" min="0" max="100" step="0.1" value="${n.engagement ?? ""}"></label></div>
+      <div class="grid g2"><label>Audience femmes / hommes<input id="nw-g" value="${esc(n.audience?.["Femmes/Hommes"] || "")}" placeholder="Ex. : 62 % / 38 %"></label><label>Âge principal<input id="nw-a" value="${esc(n.audience?.["Âge"] || "")}" placeholder="Ex. : 18-34 ans"></label></div>
+      <label>Pays principaux<input id="nw-c" value="${esc(n.audience?.["Pays"] || "")}" placeholder="Ex. : Sénégal 70 %, France 12 %"></label>
+      <label>Captures de statistiques (1 à 5 images)<input id="nw-p" type="file" accept="image/*" multiple></label>
+      ${n.network ? `<p class="small muted" style="margin:0">Changer les abonnés ou les vues relance la vérification.</p>` : ""}
+      <div class="row"><button class="btn btn-primary" type="submit">Enregistrer</button><button class="btn btn-ghost" type="button" data-close>Annuler</button></div></form>`, (m) => {
+    $("#nw-f", m).onsubmit = async (e) => {
+      e.preventDefault(); const b = e.submitter; busy(b, true);
+      try {
+        const files = [...$("#nw-p", m).files].slice(0, 5); const proofs = [];
+        if (!n.network && !files.length) throw new Error("Ajoute au moins une capture de tes statistiques");
+        for (const f of files) { if (f.size > 8 * 1024 * 1024) throw new Error("Capture trop lourde (8 Mo max)"); proofs.push(await infUpload("influence", `${me.id}/proofs/${Date.now()}-${proofs.length}.${extOf(f)}`, f)); }
+        const audience = {}; [["Femmes/Hommes", "#nw-g"], ["Âge", "#nw-a"], ["Pays", "#nw-c"]].forEach(([k, s]) => { const v = $(s, m).value.trim(); if (v) audience[k] = v; });
+        const num = (s) => $(s, m).value === "" ? null : Number($(s, m).value);
+        await rpc("inf_save_network", { p_network: n.network || $("#nw-net", m).value, p_handle: $("#nw-h", m).value, p_url: $("#nw-u", m).value, p_followers: num("#nw-fo") || 0,
+          p_avg_views: num("#nw-av"), p_engagement: num("#nw-en"), p_audience: audience, p_proofs: proofs });
+        closeModal(); toast("Réseau enregistré"); reload();
+      } catch (err) { toast(errMsg(err), true); busy(b, false); }
+    };
+  });
+  $("#nw-add").onclick = () => form();
+  body.querySelectorAll("[data-ed]").forEach((b) => b.onclick = () => form(nets.find((x) => x.network === b.dataset.ed)));
+  body.querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => { if (!confirm("Retirer ce réseau de ton profil ?")) return; try { await rpc("inf_delete_network", { p_network: b.dataset.del }); reload(); } catch (e) { toast(errMsg(e), true); } });
+}
+async function crPackages(body, { me, reload }) {
+  const pks = await sb.from("influencer_packages").select("*").eq("influencer_id", me.id).eq("active", true).order("sort").order("price").then((r) => r.data || []);
+  const fc = fees().c;
+  body.innerHTML = `<div class="row between"><p class="muted" style="margin:0">Tes formules et tes prix. Tu gardes ${Math.round((1 - fc) * 100)} % du prix affiché.</p><button class="btn btn-primary btn-sm" id="pk-add">Nouvelle formule</button></div>
+    ${pks.length ? pks.map((x) => `<div class="card inf-req"><div style="flex:1;min-width:200px"><b>${esc(x.title)}</b>${x.network ? ` <span class="inf-net">${INF_NETS[x.network]}</span>` : ""}${x.description ? `<p class="small muted" style="margin:4px 0 0">${esc(x.description)}</p>` : ""}</div>
+      <div style="text-align:right">${x.on_request ? `<b>Sur demande</b>` : `<span class="inf-price">${fcfa(x.price)} F</span><div class="small muted">${fcfa(Math.round(x.price * (1 - fc)))} F pour toi</div>`}</div>
+      <button class="btn btn-ghost btn-sm" data-ed="${x.id}">Modifier</button><button class="btn btn-ghost btn-sm" data-del="${x.id}">Retirer</button></div>`).join("") : `<div class="empty">Aucune formule. Exemple : « 1 vidéo TikTok », « 3 stories Instagram », « Pack lancement ».</div>`}`;
+  const form = (x = {}) => openModal(`<h2 style="margin:0">${x.id ? "Modifier la formule" : "Nouvelle formule"}</h2>
+    <form id="pk-f" class="stack">
+      <label>Titre<input id="pk-t" value="${esc(x.title || "")}" required maxlength="80" placeholder="Ex. : 1 vidéo TikTok"></label>
+      <label>Description<textarea id="pk-d" rows="3" maxlength="500" placeholder="Durée, nombre de publications, délai…">${esc(x.description || "")}</textarea></label>
+      <div class="grid g2"><label>Réseau<select id="pk-n"><option value="">Plusieurs réseaux</option>${Object.entries(INF_NETS).map(([k, v]) => `<option value="${k}" ${k === x.network ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+        <label>Prix (F)<input id="pk-p" type="number" min="1000" step="1000" value="${x.price || ""}"></label></div>
+      <label class="row" style="gap:8px;font-weight:500"><input type="checkbox" id="pk-r" style="width:auto" ${x.on_request ? "checked" : ""}> Prix sur demande</label>
+      <p class="small muted" style="margin:0" id="pk-net"></p>
+      <div class="row"><button class="btn btn-primary" type="submit">Enregistrer</button><button class="btn btn-ghost" type="button" data-close>Annuler</button></div></form>`, (m) => {
+    const upd = () => { const p = Number($("#pk-p", m).value) || 0; $("#pk-p", m).disabled = $("#pk-r", m).checked; $("#pk-net", m).textContent = !$("#pk-r", m).checked && p ? `Tu recevras ${fcfa(Math.round(p * (1 - fc)))} F. La marque paiera ${fcfa(p + Math.round(p * fees().b))} F.` : ""; };
+    $("#pk-p", m).oninput = $("#pk-r", m).onchange = upd; upd();
+    $("#pk-f", m).onsubmit = async (e) => { e.preventDefault(); const b = e.submitter; busy(b, true);
+      try { await rpc("inf_save_package", { p_id: x.id || null, p_title: $("#pk-t", m).value, p_description: $("#pk-d", m).value, p_network: $("#pk-n", m).value || null,
+        p_price: $("#pk-r", m).checked ? 0 : Number($("#pk-p", m).value) || 0, p_on_request: $("#pk-r", m).checked, p_active: true }); closeModal(); toast("Formule enregistrée"); reload(); }
+      catch (err) { toast(errMsg(err), true); busy(b, false); } };
+  });
+  $("#pk-add").onclick = () => form();
+  body.querySelectorAll("[data-ed]").forEach((b) => b.onclick = () => form(pks.find((x) => x.id === b.dataset.ed)));
+  body.querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => { if (!confirm("Retirer cette formule ?")) return; try { await rpc("inf_delete_package", { p_id: b.dataset.del }); reload(); } catch (e) { toast(errMsg(e), true); } });
+}
+async function crGains(body, { bk }) {
+  const rows = bk.filter((x) => ["verified", "paid_out", "published", "content_approved", "content_submitted", "accepted", "changes_requested"].includes(x.status));
+  body.innerHTML = `<p class="muted" style="margin:0">Tu es payé ${state.settings?.inf_payout_hours || 72} h après la vérification de ta publication, sur ton numéro mobile money enregistré.</p>
+    ${rows.length ? `<div class="table"><table><thead><tr><th>Marque</th><th>Formule</th><th>Statut</th><th>Pour toi</th><th>Payé le</th></tr></thead><tbody>
+    ${rows.map((x) => `<tr><td>${esc(x.brand_company || "")}</td><td>${esc(x.package_title)}</td><td>${infSt(x.status)}</td><td>${money(x.net)}</td><td>${x.paid_at ? dateTimeFr(x.paid_at) : "—"}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">Pas encore de gains.</div>`}`;
+}
+
+/* ---------- Espace marque ---------- */
+async function viewMarque() {
+  app.innerHTML = `<div class="spinner"></div>`;
+  const uid = state.session.user.id;
+  const [brand, bk, w] = await Promise.all([sb.from("brands").select("*").eq("id", uid).maybeSingle().then((r) => r.data), rpc("inf_my_bookings"), rpc("annonceur_wallet").then((r) => r[0]).catch(() => null)]);
+  if (!brand) return brandForm(null);
+  const toCheck = bk.filter((x) => x.status === "content_submitted");
+  const running = bk.filter((x) => ["awaiting_creator", "accepted", "content_submitted", "changes_requested", "content_approved", "published"].includes(x.status));
+  const engaged = running.reduce((s, x) => s + Number(x.total), 0);
+  app.innerHTML = `<main class="wrap">
+    <div class="page-head"><div><p class="eyebrow">Espace marque · Pub Influenceur</p><h1 style="font-size:2rem;margin:0">${esc(brand.company)}</h1>
+      <p class="muted small" style="margin:4px 0 0">${brand.verified_at ? "✓ Entreprise vérifiée" : "Vérification de l'entreprise en cours"}${brand.ninea ? " · NINEA " + esc(brand.ninea) : ""} · <button class="btn btn-ghost btn-sm" id="br-ed" style="padding:2px 8px">Modifier</button></p></div>
+      <div class="row"><a class="btn btn-ghost" href="#/annonceur">Mes campagnes statuts</a><a class="btn btn-primary" href="#/influence">Trouver un créateur</a></div></div>
+    <div class="grid g4" style="margin-bottom:20px">
+      <div class="card kpi"><span class="eyebrow">Campagnes en cours</span><span class="num">${running.length}</span></div>
+      <div class="card kpi"><span class="eyebrow">Vidéos à valider</span><span class="num">${toCheck.length}</span></div>
+      <div class="card kpi"><span class="eyebrow">Budget engagé</span><div>${money(engaged)}</div></div>
+      <div class="card kpi"><span class="eyebrow">Solde disponible</span><div>${money(w?.available || 0)}</div><button class="btn btn-ghost btn-sm" id="br-rc">Recharger</button></div>
+    </div>
+    <div id="br-check" class="stack"></div>
+    <section class="stack" style="margin-top:20px"><h2>Mes réservations</h2>
+      ${bk.length ? `<div class="table"><table><thead><tr><th>Créateur</th><th>Formule</th><th>Date</th><th>Statut</th><th>Total</th><th></th></tr></thead><tbody>
+      ${bk.map((x) => `<tr><td><a href="#/influence/${esc(x.influencer_slug)}"><b>${esc(x.influencer_name)}</b></a></td><td>${esc(x.package_title)}</td><td>${x.publish_date ? new Date(x.publish_date).toLocaleDateString("fr-FR") : "—"}</td>
+        <td>${infSt(x.status)}${x.refusal_reason ? `<div class="small muted">${esc(x.refusal_reason)}</div>` : ""}${Number(x.refund) ? `<div class="small muted">Remboursé : ${fcfa(x.refund)} F</div>` : ""}</td><td>${money(x.total)}</td>
+        <td class="row" style="gap:6px;flex-wrap:nowrap">${x.post_url ? `<a class="btn btn-ghost btn-sm" href="${esc(x.post_url)}" target="_blank" rel="noopener">Voir le post</a>` : ""}
+          ${["awaiting_creator", "accepted"].includes(x.status) ? `<button class="btn btn-ghost btn-sm" data-cancel="${x.id}" data-st="${x.status}">Annuler</button>` : ""}
+          ${["verified", "paid_out"].includes(x.status) && !x.reviewed ? `<button class="btn btn-primary btn-sm" data-rev="${x.id}">Laisser un avis</button>` : ""}
+          <button class="btn btn-ghost btn-sm" data-det="${x.id}">Détails</button></td></tr>`).join("")}</tbody></table></div>`
+        : `<div class="empty">Aucune réservation pour l'instant. <a href="#/influence">Découvrir les créateurs</a></div>`}
+    </section>
+    <p class="small muted" style="margin-top:16px">Annulation gratuite avant l'acceptation du créateur, 50 % remboursés après, rien après la livraison de la vidéo.</p></main>`;
+  $("#br-ed").onclick = () => brandForm(brand);
+  $("#br-rc").onclick = rechargeModal;
+  const chk = $("#br-check");
+  for (const x of toCheck) {
+    const url = await signedContent(x.content_url);
+    const media = !url ? `<div class="empty small">Contenu indisponible</div>` : isVideo(url) || x.content_url.startsWith("sb:") && /\.(mp4|mov|webm|m4v)$/i.test(x.content_url) ? `<video class="inf-video" src="${esc(url)}" controls playsinline preload="metadata"></video>`
+      : /\.(jpe?g|png|webp|gif)(\?|$)/i.test(url) ? `<img class="inf-video" style="object-fit:contain" src="${esc(url)}" alt="Contenu envoyé">` : `<a class="btn btn-ghost" href="${esc(url)}" target="_blank" rel="noopener">Ouvrir la vidéo</a>`;
+    chk.insertAdjacentHTML("beforeend", `<section class="card" style="border:2px solid var(--saffron);display:flex;flex-wrap:wrap;gap:20px">
+      <div style="flex:0 1 300px;min-width:220px">${media}</div>
+      <div class="stack" style="flex:1 1 320px;gap:10px">${infSt(x.status)}<h2 style="margin:0">${esc(x.influencer_name)} · ${esc(x.package_title)}</h2>
+        ${x.content_note ? `<p style="margin:0">Note du créateur : ${esc(x.content_note)}</p>` : ""}
+        <p class="small muted" style="margin:0">Sans réponse de votre part, la vidéo est validée automatiquement ${state.settings?.inf_validate_hours || 48} h après l'envoi (${dateTimeFr(new Date(new Date(x.submitted_at).getTime() + (state.settings?.inf_validate_hours || 48) * 3600e3))}). Retouches utilisées : ${x.revisions || 0}/2.</p>
+        <label>Commentaire pour le créateur<textarea data-cm="${x.id}" rows="3" maxlength="600" placeholder="Ex. : montrer le logo plus tôt"></textarea></label>
+        <div class="row"><button class="btn btn-ok" data-ok="${x.id}">Valider la vidéo</button>${(x.revisions || 0) < 2 ? `<button class="btn btn-ghost" data-ch="${x.id}">Demander une retouche</button>` : ""}</div></div></section>`);
+  }
+  const review = async (b, approve) => { const cm = chk.querySelector(`[data-cm="${b.dataset.ok || b.dataset.ch}"]`).value.trim();
+    if (!approve && cm.length < 5) return toast("Explique la retouche voulue", true);
+    busy(b, true); try { await rpc("inf_review_content", { p_id: b.dataset.ok || b.dataset.ch, p_approve: approve, p_comment: cm }); toast(approve ? "Vidéo validée. Le créateur peut publier." : "Retouche demandée."); viewMarque(); } catch (e) { toast(errMsg(e), true); busy(b, false); } };
+  chk.querySelectorAll("[data-ok]").forEach((b) => b.onclick = () => review(b, true));
+  chk.querySelectorAll("[data-ch]").forEach((b) => b.onclick = () => review(b, false));
+  app.querySelectorAll("[data-cancel]").forEach((b) => b.onclick = async () => {
+    const x = bk.find((y) => y.id === b.dataset.cancel);
+    const msg = b.dataset.st === "awaiting_creator" ? `Annuler ? Vous êtes remboursé intégralement (${fcfa(x.total)} F).` : `Le créateur a déjà accepté : vous serez remboursé de 50 % (${fcfa(Math.round(x.price / 2) + Number(x.brand_fee))} F). Annuler ?`;
+    if (!confirm(msg)) return; busy(b, true);
+    try { await rpc("inf_cancel", { p_id: x.id }); toast("Réservation annulée"); viewMarque(); } catch (e) { toast(errMsg(e), true); busy(b, false); } });
+  app.querySelectorAll("[data-det]").forEach((b) => b.onclick = () => { const x = bk.find((y) => y.id === b.dataset.det);
+    openModal(`<h2 style="margin:0">${esc(x.influencer_name)}</h2>${bkInfo(x, "brand")}<div class="small stack" style="gap:4px;border-top:1px solid var(--line);padding-top:10px">
+      <div class="row between"><span>Prix du créateur</span><b>${fcfa(x.price)} F</b></div><div class="row between"><span>Frais de service</span><b>${fcfa(x.brand_fee)} F</b></div><div class="row between"><span>Total</span><b>${fcfa(x.total)} F</b></div>
+      <div class="muted">Créée le ${dateTimeFr(x.created_at)}</div></div><button class="btn btn-ghost" data-close>Fermer</button>`); });
+  app.querySelectorAll("[data-rev]").forEach((b) => b.onclick = () => openModal(`<h2 style="margin:0">Votre avis</h2>
+    <div class="inf-chips" id="rv-st" role="radiogroup" aria-label="Note">${[1, 2, 3, 4, 5].map((n) => `<button type="button" class="inf-chip" data-n="${n}" aria-pressed="${n === 5}">${n} ★</button>`).join("")}</div>
+    <label>Commentaire (facultatif)<textarea id="rv-b" rows="3" maxlength="600"></textarea></label>
+    <div class="row"><button class="btn btn-primary" id="rv-go">Publier mon avis</button><button class="btn btn-ghost" data-close>Annuler</button></div>`, (m) => {
+    let n = 5; $("#rv-st", m).onclick = (e) => { const c = e.target.closest("[data-n]"); if (!c) return; n = Number(c.dataset.n); m.querySelectorAll("[data-n]").forEach((z) => z.setAttribute("aria-pressed", String(z === c))); };
+    $("#rv-go", m).onclick = async (e) => { busy(e.target, true); try { await rpc("inf_leave_review", { p_id: b.dataset.rev, p_rating: n, p_body: $("#rv-b", m).value }); closeModal(); toast("Merci ! Votre avis sera publié après relecture."); viewMarque(); } catch (err) { toast(errMsg(err), true); busy(e.target, false); } };
+  }));
+}
+function brandForm(b) {
+  const p = state.profile || {};
+  app.innerHTML = `<main class="wrap" style="max-width:640px"><form class="card stack" id="bf">
+    <p class="eyebrow">Espace Pub Influenceur</p><h1 style="font-size:1.8rem;margin:0">${b ? "Ma fiche entreprise" : "Créez votre fiche entreprise"}</h1>
+    <p class="muted" style="margin:0">Ces informations permettent aux créateurs de savoir avec qui ils travaillent et figurent sur vos factures.</p>
+    <label>Nom de l'entreprise<input id="bf-co" required minlength="2" maxlength="100" value="${esc(b?.company || p.company || "")}"></label>
+    <div class="grid g2"><label>NINEA<input id="bf-ni" maxlength="30" value="${esc(b?.ninea || "")}"></label><label>RCCM (facultatif)<input id="bf-rc" maxlength="40" value="${esc(b?.rccm || "")}"></label></div>
+    <div class="grid g2"><label>Personne à contacter<input id="bf-ct" required maxlength="80" value="${esc(b?.contact_name || p.full_name || "")}"></label><label>Téléphone<input id="bf-ph" type="tel" required value="${esc(b?.phone || p.phone || "")}"></label></div>
+    <div class="grid g2"><label>Site ou page (facultatif)<input id="bf-ws" maxlength="200" value="${esc(b?.website || "")}" placeholder="https://"></label><label>Secteur<input id="bf-se" maxlength="60" value="${esc(b?.sector || "")}" placeholder="Ex. : cosmétique"></label></div>
+    ${b ? `<p class="small muted" style="margin:0">Changer le nom ou le NINEA relance la vérification.</p>` : ""}
+    <div class="row"><button class="btn btn-primary" type="submit">Enregistrer</button>${b ? `<a class="btn btn-ghost" href="#/marque">Annuler</a>` : `<a class="btn btn-ghost" href="#/annonceur">Plus tard</a>`}</div></form></main>`;
+  $("#bf").onsubmit = async (e) => {
+    e.preventDefault(); const btn = e.submitter; busy(btn, true);
+    try { await rpc("brand_save", { p_company: $("#bf-co").value, p_ninea: $("#bf-ni").value, p_rccm: $("#bf-rc").value, p_contact: $("#bf-ct").value, p_phone: $("#bf-ph").value, p_website: $("#bf-ws").value, p_sector: $("#bf-se").value });
+      toast("Fiche entreprise enregistrée");
+      let back = ""; try { back = sessionStorage.getItem("sp_inf_back") || ""; sessionStorage.removeItem("sp_inf_back"); } catch {}
+      if (back && back !== location.hash) location.hash = back; else viewMarque(); }
+    catch (err) { toast(errMsg(err), true); busy(btn, false); }
+  };
+}
+
+/* ---------- Admin : onglet Influenceurs ---------- */
+async function adminInfluence(body, reload) {
+  const ov = await rpc("inf_admin_overview");
+  const sub = new URLSearchParams(location.hash.split("?")[1] || "").get("s") || "createurs";
+  const payH = Number(ov.payout_hours || 72);
+  const toVerify = ov.bookings.filter((x) => x.status === "published");
+  const payable = ov.bookings.filter((x) => x.status === "verified");
+  const disputes = ov.bookings.filter((x) => x.status === "disputed");
+  const pendingInf = ov.influencers.filter((x) => x.status === "pending");
+  const newReq = ov.requests.filter((x) => x.status === "nouveau");
+  const pendRev = ov.reviews.filter((x) => x.status === "pending");
+  const comm = ov.bookings.filter((x) => ["verified", "paid_out"].includes(x.status)).reduce((s, x) => s + Number(x.creator_fee) + Number(x.brand_fee), 0);
+  const subs = [["createurs", "Créateurs", pendingInf.length], ["reservations", "Réservations", toVerify.length + payable.length + disputes.length], ["marques", "Marques", ov.brands.filter((x) => !x.verified_at).length], ["demandes", "Demandes de prix", newReq.length], ["avis", "Avis", pendRev.length]];
+  body.innerHTML = `<div class="grid g4" style="margin-bottom:16px">
+      <div class="card kpi"><span class="eyebrow">Créateurs visibles</span><span class="num">${ov.influencers.filter((x) => ["verified", "certified"].includes(x.status)).length}</span><span class="small muted">${pendingInf.length} à vérifier</span></div>
+      <div class="card kpi"><span class="eyebrow">Publications à vérifier</span><span class="num">${toVerify.length}</span></div>
+      <div class="card kpi"><span class="eyebrow">Paiements créateurs</span><span class="num">${payable.length}</span><span class="small muted">${fcfa(payable.reduce((s, x) => s + x.price - x.creator_fee, 0))} F</span></div>
+      <div class="card kpi"><span class="eyebrow">Commissions gagnées</span><div>${money(comm)}</div></div></div>
+    <div class="inf-chips" style="margin-bottom:16px">${subs.map(([k, l, n]) => `<button class="inf-chip" data-s="${k}" aria-pressed="${k === sub}">${l}${n ? ` (${n})` : ""}</button>`).join("")}</div>
+    <div id="ai-b" class="stack"></div>`;
+  body.querySelectorAll("[data-s]").forEach((b) => b.onclick = () => location.hash = "#/admin?t=influence&s=" + b.dataset.s);
+  const box = $("#ai-b");
+  const act = async (btn, fn, args, msg) => { busy(btn, true); try { await rpc(fn, args); toast(msg || "Fait"); reload(); } catch (e) { toast(errMsg(e), true); busy(btn, false); } };
+  const inviteBox = (code, name) => { const link = `https://statupub.com/#/pro/invitation/${code}`;
+    const wa = `https://wa.me/?text=${encodeURIComponent(`Bonjour ${name}, voici ton invitation pour créer ton profil créateur sur l'Espace Pub Influenceur StatuPub : ${link}`)}`;
+    openModal(`<h2 style="margin:0">Lien d'invitation</h2><p class="small muted" style="margin:0">Envoie ce lien à ${esc(name)}. Il ne sert qu'une fois.</p>
+      <input readonly value="${esc(link)}" id="iv-l"><div class="row"><button class="btn btn-primary" id="iv-c">Copier</button><a class="btn btn-ok" href="${esc(wa)}" target="_blank" rel="noopener">Envoyer sur WhatsApp</a><button class="btn btn-ghost" data-close>Fermer</button></div>`,
+    (m) => { $("#iv-c", m).onclick = () => copy(link); }); };
+
+  if (sub === "createurs") {
+    const ST = { pending: "À vérifier", verified: "Vérifié", certified: "Certifié", hidden: "Masqué", rejected: "Refusé" };
+    box.innerHTML = `<div class="row between"><p class="muted" style="margin:0">Invite un créateur : il reçoit un lien pour créer son compte et son profil.</p><button class="btn btn-primary btn-sm" id="ai-new">Inviter un créateur</button></div>
+      ${ov.influencers.length ? ov.influencers.map((i) => `<div class="card stack" style="gap:10px"><div class="row" style="gap:14px;flex-wrap:wrap">
+        <span style="width:14px;height:14px;border-radius:50%;background:${esc(i.color)}"></span>${infAva(i.avatar_url, i.display_name)}
+        <div style="flex:1;min-width:200px"><b>${esc(i.display_name)}</b> <span class="inf-status" style="background:#EEF3F1;color:var(--ink)">${ST[i.status] || i.status}</span>
+          <div class="small muted">${i.user_id ? esc(i.email || "Compte relié") : "Invitation pas encore utilisée"}${i.contact_phone ? " · " + esc(i.contact_phone) : ""}${i.city ? " · " + esc(i.city) : ""} · ${i.packages} formule(s)</div></div>
+        <div class="row" style="gap:6px;flex-wrap:wrap">
+          ${!i.user_id ? `<button class="btn btn-ghost btn-sm" data-code="${i.id}" data-nm="${esc(i.display_name)}">Lien d'invitation</button>` : ""}
+          <a class="btn btn-ghost btn-sm" href="#/influence/${esc(i.slug)}">Profil</a>
+          ${i.status !== "verified" ? `<button class="btn btn-ink btn-sm" data-st="verified" data-id="${i.id}">Vérifier</button>` : ""}
+          ${i.status !== "certified" ? `<button class="btn btn-primary btn-sm" data-st="certified" data-id="${i.id}">Certifier</button>` : ""}
+          ${i.status !== "hidden" ? `<button class="btn btn-ghost btn-sm" data-st="hidden" data-id="${i.id}">Masquer</button>` : ""}
+          ${i.status === "pending" ? `<button class="btn btn-bad btn-sm" data-st="rejected" data-id="${i.id}">Refuser</button>` : ""}</div></div>
+        ${(i.networks || []).length ? `<div class="stack" style="gap:6px">${i.networks.map((n) => `<div class="row small" style="gap:10px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:6px">
+          <span class="inf-net">${INF_NETS[n.network]}</span><span>${n.url ? `<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.handle || n.url)}</a>` : esc(n.handle || "")}</span><b>${kfmt(n.followers)}</b><span class="muted">${n.avg_views ? kfmt(n.avg_views) + " vues" : ""} ${n.engagement != null ? n.engagement + " %" : ""}</span>
+          ${(n.proof_urls || []).map((u, k) => `<a href="${esc(u)}" target="_blank" rel="noopener">Capture ${k + 1}</a>`).join(" ")}
+          ${n.verified_at ? `<span class="inf-badge v">✓</span><button class="btn btn-ghost btn-sm" data-net="${n.id}" data-ok="0">Retirer ✓</button>` : `<button class="btn btn-ok btn-sm" data-net="${n.id}" data-ok="1">Chiffres OK</button>`}</div>`).join("")}</div>` : ""}</div>`).join("")
+      : `<div class="empty">Aucun créateur. Commence par inviter tes ~20 créateurs.</div>`}`;
+    $("#ai-new").onclick = () => openModal(`<h2 style="margin:0">Inviter un créateur</h2><form id="an-f" class="stack">
+      <label>Nom de créateur<input id="an-n" required minlength="2" maxlength="60"></label>
+      <label>Adresse du profil (facultatif)<input id="an-s" placeholder="ex. : aminata-diallo" pattern="[a-z0-9-]{3,40}"></label>
+      <div class="grid g2"><label>Téléphone<input id="an-p" type="tel"></label><label>E-mail<input id="an-e" type="email"></label></div>
+      <label>Ville<input id="an-c"></label>
+      <label>Catégories (virgules)<input id="an-k" placeholder="Mode, Beauté"></label>
+      <div class="row"><button class="btn btn-primary" type="submit">Créer l'invitation</button><button class="btn btn-ghost" type="button" data-close>Annuler</button></div></form>`, (m) => {
+      $("#an-f", m).onsubmit = async (e) => { e.preventDefault(); const b = e.submitter; busy(b, true);
+        try { const r = await rpc("inf_admin_create", { p_name: $("#an-n", m).value, p_slug: $("#an-s", m).value, p_phone: $("#an-p", m).value, p_email: $("#an-e", m).value, p_city: $("#an-c", m).value,
+          p_categories: $("#an-k", m).value.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 4) });
+          const nm = $("#an-n", m).value; closeModal(); inviteBox(r.code, nm); setTimeout(reload, 50); }
+        catch (err) { toast(errMsg(err), true); busy(b, false); } };
+    });
+    box.querySelectorAll("[data-code]").forEach((b) => b.onclick = async () => { try { const c = await rpc("inf_admin_new_code", { p_id: b.dataset.code }); inviteBox(c, b.dataset.nm); } catch (e) { toast(errMsg(e), true); } });
+    box.querySelectorAll("[data-st]").forEach((b) => b.onclick = () => act(b, "inf_admin_set_status", { p_id: b.dataset.id, p_status: b.dataset.st }, "Statut mis à jour"));
+    box.querySelectorAll("[data-net]").forEach((b) => b.onclick = () => act(b, "inf_admin_verify_network", { p_net: b.dataset.net, p_ok: b.dataset.ok === "1" }));
+  }
+
+  if (sub === "reservations") {
+    const row = (x) => { const due = x.verified_at ? new Date(new Date(x.verified_at).getTime() + payH * 3600e3) : null; const canPay = due && due <= new Date();
+      return `<tr><td><b>${esc(x.influencer_name)}</b><div class="small muted">${esc(x.brand_company || "")}</div></td><td>${esc(x.package_title)}<div class="small muted">${dateTimeFr(x.created_at)}</div></td><td>${infSt(x.status)}${x.admin_note ? `<div class="small muted">${esc(x.admin_note)}</div>` : ""}</td>
+      <td>${money(x.total)}<div class="small muted">créateur ${fcfa(x.price - x.creator_fee)} F</div></td><td class="row" style="gap:6px">
+      ${x.post_url ? `<a class="btn btn-ghost btn-sm" href="${esc(x.post_url)}" target="_blank" rel="noopener">Post</a>` : ""}
+      ${x.status === "published" ? `<button class="btn btn-ok btn-sm" data-vp="${x.id}" data-ok="1">Publication OK</button><button class="btn btn-bad btn-sm" data-vp="${x.id}" data-ok="0">Litige</button>` : ""}
+      ${x.status === "verified" ? (canPay ? `<button class="btn btn-primary btn-sm" data-pay="${x.id}" data-amt="${x.price - x.creator_fee}">Payer</button>` : `<span class="small muted">Payable le ${dateTimeFr(due)}</span>`) : ""}
+      ${x.status === "disputed" ? `<button class="btn btn-ink btn-sm" data-res="${x.id}">Trancher</button>` : ""}</td></tr>`; };
+    const pri = { published: 0, disputed: 1, verified: 2 };
+    const list = [...ov.bookings].sort((a, b) => (pri[a.status] ?? 9) - (pri[b.status] ?? 9));
+    box.innerHTML = list.length ? `<div class="table"><table><thead><tr><th>Créateur / marque</th><th>Formule</th><th>Statut</th><th>Montant</th><th></th></tr></thead><tbody>${list.map(row).join("")}</tbody></table></div>` : `<div class="empty">Aucune réservation.</div>`;
+    box.querySelectorAll("[data-vp]").forEach((b) => b.onclick = () => { const ok = b.dataset.ok === "1"; const note = ok ? null : prompt("Motif du litige (ex. : #pub absent, post supprimé) :"); if (!ok && !note) return; act(b, "inf_admin_verify_post", { p_id: b.dataset.vp, p_ok: ok, p_note: note }, ok ? "Publication vérifiée" : "Litige ouvert"); });
+    box.querySelectorAll("[data-pay]").forEach((b) => b.onclick = () => { const ref = prompt(`Référence du paiement de ${fcfa(b.dataset.amt)} F (Wave / OM) :`); if (ref) act(b, "inf_admin_payout", { p_id: b.dataset.pay, p_ref: ref }, "Paiement enregistré"); });
+    box.querySelectorAll("[data-res]").forEach((b) => b.onclick = () => { const x = ov.bookings.find((y) => y.id === b.dataset.res);
+      openModal(`<h2 style="margin:0">Trancher le litige</h2><p class="small muted" style="margin:0">${esc(x.influencer_name)} / ${esc(x.brand_company || "")} · total ${fcfa(x.total)} F</p>
+        <label>Remboursement marque (F)<input id="rs-r" type="number" min="0" max="${x.total}" value="${x.total}"></label>
+        <label class="row" style="gap:8px;font-weight:500"><input type="checkbox" id="rs-p" style="width:auto"> Payer quand même le créateur</label>
+        <label>Note<textarea id="rs-n" rows="2"></textarea></label>
+        <div class="row"><button class="btn btn-primary" id="rs-go">Valider</button><button class="btn btn-ghost" data-close>Annuler</button></div>`, (m) => {
+        $("#rs-go", m).onclick = (e) => act(e.target, "inf_admin_resolve", { p_id: x.id, p_refund: Number($("#rs-r", m).value) || 0, p_pay_creator: $("#rs-p", m).checked, p_note: $("#rs-n", m).value }, "Litige réglé");
+      }); });
+  }
+
+  if (sub === "marques") {
+    box.innerHTML = ov.brands.length ? `<div class="table"><table><thead><tr><th>Entreprise</th><th>NINEA / RCCM</th><th>Contact</th><th>Statut</th><th></th></tr></thead><tbody>
+      ${ov.brands.map((b) => `<tr><td><b>${esc(b.company)}</b><div class="small muted">${esc(b.sector || "")}${b.website ? ` · <a href="${esc(b.website)}" target="_blank" rel="noopener">site</a>` : ""}</div></td><td>${esc(b.ninea || "—")}<div class="small muted">${esc(b.rccm || "")}</div></td>
+        <td>${esc(b.contact_name || b.full_name || "")}<div class="small muted">${esc(b.phone || "")} · ${esc(b.email || "")}</div></td><td>${b.verified_at ? `<span class="inf-badge v">✓ Vérifiée</span>` : "À vérifier"}</td>
+        <td>${b.verified_at ? `<button class="btn btn-ghost btn-sm" data-vb="${b.id}" data-ok="0">Retirer</button>` : `<button class="btn btn-ok btn-sm" data-vb="${b.id}" data-ok="1">Vérifier</button>`}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">Aucune marque inscrite.</div>`;
+    box.querySelectorAll("[data-vb]").forEach((b) => b.onclick = () => act(b, "inf_admin_verify_brand", { p_id: b.dataset.vb, p_ok: b.dataset.ok === "1" }));
+  }
+
+  if (sub === "demandes") {
+    box.innerHTML = ov.requests.length ? ov.requests.map((q) => { const tel = String(q.phone || "").replace(/\D/g, "");
+      return `<div class="card inf-req" style="${q.status === "nouveau" ? "" : "opacity:.6"}"><div style="flex:1;min-width:220px"><b>${esc(q.company)}</b> <span class="small muted">${dateTimeFr(q.created_at)}</span>
+        <div class="small">Pour <b>${esc(q.influencer_name || "—")}</b>${q.package_title ? " · " + esc(q.package_title) : ""}</div><div class="small muted">${esc(q.contact_name || "")} · ${esc(q.phone)}${q.email ? " · " + esc(q.email) : ""}</div>${q.message ? `<p class="small" style="margin:4px 0 0">${esc(q.message)}</p>` : ""}</div>
+        <div class="row"><a class="btn btn-ghost btn-sm" href="tel:${esc(q.phone)}">Appeler</a><a class="btn btn-ok btn-sm" href="https://wa.me/${tel}" target="_blank" rel="noopener">WhatsApp</a>${q.status === "nouveau" ? `<button class="btn btn-ghost btn-sm" data-rq="${q.id}">Traité</button>` : ""}</div></div>`; }).join("") : `<div class="empty">Aucune demande de prix.</div>`;
+    box.querySelectorAll("[data-rq]").forEach((b) => b.onclick = () => act(b, "inf_admin_price_request", { p_id: b.dataset.rq }));
+  }
+
+  if (sub === "avis") {
+    box.innerHTML = ov.reviews.length ? ov.reviews.map((r) => `<div class="card stack" style="gap:6px"><div class="row between"><b>${esc(r.brand_company || "Marque")} → ${esc(r.influencer_name)}</b>${stars(r.rating)}</div>${r.body ? `<p style="margin:0">${esc(r.body)}</p>` : ""}
+      <div class="row"><span class="small muted">${r.status === "pending" ? "En attente" : r.status === "published" ? "Publié" : "Masqué"}</span>${r.status !== "published" ? `<button class="btn btn-ok btn-sm" data-rv="${r.booking_id}" data-s="published">Publier</button>` : ""}${r.status !== "hidden" ? `<button class="btn btn-ghost btn-sm" data-rv="${r.booking_id}" data-s="hidden">Masquer</button>` : ""}</div></div>`).join("") : `<div class="empty">Aucun avis.</div>`;
+    box.querySelectorAll("[data-rv]").forEach((b) => b.onclick = () => act(b, "inf_admin_review", { p_booking: b.dataset.rv, p_status: b.dataset.s }));
+  }
+}
