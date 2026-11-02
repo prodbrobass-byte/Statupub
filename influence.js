@@ -4,6 +4,25 @@
 /* global $, app, state, sb, rpc, esc, fcfa, money, dateTimeFr, toast, errMsg, busy, openModal, closeModal, copy, rechargeModal, countryOptions, COUNTRIES */
 
 const INF_NETS = { tiktok: "TikTok", instagram: "Instagram", snapchat: "Snapchat", youtube: "YouTube", facebook: "Facebook" };
+const INF_ICONS = {
+  tiktok: '<path fill="currentColor" d="M16.6 2h-3.3v13.2a2.9 2.9 0 1 1-2-2.8V9.1a6.2 6.2 0 1 0 5.3 6.1V8.6a7.6 7.6 0 0 0 4.4 1.4V6.7a4.4 4.4 0 0 1-4.4-4.4Z"/>',
+  instagram: '<path fill="currentColor" d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0 8.2a3.2 3.2 0 1 1 0-6.4 3.2 3.2 0 0 1 0 6.4ZM17.3 5.5a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4ZM12 2c-2.7 0-3 0-4.1.1-4 .2-5.6 1.8-5.8 5.8C2 9 2 9.3 2 12s0 3 .1 4.1c.2 4 1.8 5.6 5.8 5.8 1.1.1 1.4.1 4.1.1s3 0 4.1-.1c4-.2 5.6-1.8 5.8-5.8.1-1.1.1-1.4.1-4.1s0-3-.1-4.1c-.2-4-1.8-5.6-5.8-5.8C15 2 14.7 2 12 2Zm0 1.8c2.7 0 3 0 4 .1 3 .1 4 1.2 4.1 4.1.1 1 .1 1.3.1 4s0 3-.1 4c-.1 2.9-1.1 4-4.1 4.1-1 .1-1.3.1-4 .1s-3 0-4-.1c-3-.1-4-1.2-4.1-4.1-.1-1-.1-1.3-.1-4s0-3 .1-4C4 5 5 4 8 3.9c1-.1 1.3-.1 4-.1Z"/>',
+  snapchat: '<path fill="currentColor" d="M12 2.2c2.9 0 5 2.2 5 5.2v2.3c.5.2 1.2-.2 1.6 0 .6.3.5 1-.1 1.3-.6.3-1.6.5-1.6 1.1.3 1.6 2 3.3 3.8 3.8.5.1.6.7.1 1-1 .5-2.2.4-2.5.9-.2.4-.1 1.1-.6 1.2-.8.2-1.8-.4-3 0-1 .4-1.6 1.6-2.7 1.6s-1.7-1.2-2.7-1.6c-1.2-.4-2.2.2-3 0-.5-.1-.4-.8-.6-1.2-.3-.5-1.5-.4-2.5-.9-.5-.3-.4-.9.1-1 1.8-.5 3.5-2.2 3.8-3.8 0-.6-1-.8-1.6-1.1-.6-.3-.7-1-.1-1.3.4-.2 1.1.2 1.6 0V7.4c0-3 2.1-5.2 5-5.2Z"/>',
+  youtube: '<path fill="currentColor" d="M21.6 7.2a2.5 2.5 0 0 0-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.8.4A2.5 2.5 0 0 0 2.4 7.2 26 26 0 0 0 2 12a26 26 0 0 0 .4 4.8 2.5 2.5 0 0 0 1.8 1.8c1.6.4 7.8.4 7.8.4s6.2 0 7.8-.4a2.5 2.5 0 0 0 1.8-1.8A26 26 0 0 0 22 12a26 26 0 0 0-.4-4.8ZM10 15.1V8.9l5.2 3.1Z"/>',
+  facebook: '<path fill="currentColor" d="M22 12a10 10 0 1 0-11.6 9.9v-7H7.9V12h2.5V9.8c0-2.5 1.5-3.9 3.8-3.9 1.1 0 2.2.2 2.2.2v2.5h-1.3c-1.2 0-1.6.8-1.6 1.6V12h2.8l-.4 2.9h-2.3v7A10 10 0 0 0 22 12Z"/>',
+};
+const INF_BG = { tiktok: "#111", instagram: "linear-gradient(45deg,#F58529,#DD2A7B 55%,#8134AF)", snapchat: "#FFFC00", youtube: "#FF0000", facebook: "#1877F2" };
+/* Lien du compte : celui saisi par le créateur, sinon construit depuis le nom du compte */
+function netUrl(n) {
+  if (n.url && /^https?:\/\//i.test(n.url)) return n.url;
+  const h = String(n.handle || "").trim().replace(/^@/, ""); if (!h) return "";
+  const e = encodeURIComponent(h);
+  return { tiktok: `https://www.tiktok.com/@${e}`, instagram: `https://www.instagram.com/${e}`, snapchat: `https://www.snapchat.com/add/${e}`, youtube: `https://www.youtube.com/@${e}`, facebook: `https://www.facebook.com/${e}` }[n.network] || "";
+}
+const netIcon = (k, size = 22) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true">${INF_ICONS[k] || ""}</svg>`;
+const socBtn = (n) => { const u = netUrl(n); const st = `background:${INF_BG[n.network]};color:${n.network === "snapchat" ? "#111" : "#fff"}`;
+  return u ? `<a class="inf-soc" href="${esc(u)}" target="_blank" rel="noopener" style="${st}" aria-label="${INF_NETS[n.network]} de ce créateur" title="Voir sur ${INF_NETS[n.network]}">${netIcon(n.network)}</a>`
+    : `<span class="inf-soc" style="${st};opacity:.5" title="${INF_NETS[n.network]}">${netIcon(n.network)}</span>`; };
 const INF_CATS = ["Mode", "Beauté", "Humour", "Food", "Tech", "Sport", "Musique", "Lifestyle", "Famille", "Business", "Voyage", "Gaming", "Religion", "Éducation"];
 const INF_PALETTE = [["Rouge", "#B3261E"], ["Bordeaux", "#7A1F3D"], ["Orange", "#C2541A"], ["Or", "#9A6B12"], ["Vert", "#2E6B3A"], ["Émeraude", "#1F5C52"],
   ["Bleu", "#1E5AA8"], ["Bleu nuit", "#1C2A5A"], ["Violet", "#5B3A8C"], ["Rose", "#A83A6E"], ["Marron", "#6B4227"], ["Noir", "#1A1A1A"]];
@@ -97,7 +116,7 @@ async function viewInfluence() {
     <div class="inf-cover" style="${infCoverStyle(x.color, x.banner)}">${x.certified ? infBadge(true) : ""}${infAva(x.avatar, x.name)}</div>
     <div class="inf-body"><h3>${esc(x.name)}</h3>
       <div class="small muted">${esc([x.city, (x.categories || []).slice(0, 2).join(" · ")].filter(Boolean).join(" · "))}</div>
-      <div class="row" style="gap:6px;flex-wrap:wrap">${(x.networks || []).slice(0, 4).map((n) => `<span class="inf-net">${INF_NETS[n.network] || n.network} ${kfmt(n.followers)}</span>`).join("")}</div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">${(x.networks || []).slice(0, 5).map((n) => `<span class="inf-net" style="display:inline-flex;align-items:center;gap:4px" title="${INF_NETS[n.network] || n.network}">${netIcon(n.network, 14)} ${kfmt(n.followers)}</span>`).join("")}</div>
       <div class="small">${x.reviews ? `${stars(x.rating)} <b>${Number(x.rating).toFixed(1)}</b> <span class="muted">(${x.reviews} avis)</span>` : `<span class="muted">Nouveau sur StatuPub</span>`}</div>
       <div class="inf-foot">${x.min_price != null ? `<span><span class="small muted">dès</span> <span class="inf-price">${fcfa(x.min_price)} F</span></span>` : `<span class="small" style="font-weight:600">Demander le prix</span>`}
         <span class="small muted">${x.accepting ? "Disponible" : "Complet"}</span></div></div></a>`;
@@ -159,7 +178,8 @@ async function viewInfProfile(slug) {
           <div class="row" style="gap:18px;align-items:flex-end;flex-wrap:wrap">${infAva(p.avatar, p.name, "lg")}
             <div class="stack" style="gap:6px;flex:1;min-width:220px"><div class="row" style="gap:10px;flex-wrap:wrap"><h1 style="margin:0;font-size:2rem">${esc(p.name)}</h1>${p.status === "verified" || p.status === "certified" ? infBadge(p.certified) : `<span class="inf-status" style="background:#FFF1DB;color:#7A4E0C">Aperçu · profil non publié</span>`}</div>
               <div class="muted">${esc([p.city, COUNTRIES?.[p.country]?.name || p.country].filter(Boolean).join(", "))}${(p.languages || []).length ? " · " + esc(p.languages.join(", ")) : ""}</div>
-              <div class="row" style="gap:6px;flex-wrap:wrap">${(p.categories || []).map((c) => `<span class="inf-net">${esc(c)}</span>`).join("")}</div></div></div>
+              <div class="row" style="gap:6px;flex-wrap:wrap">${(p.categories || []).map((c) => `<span class="inf-net">${esc(c)}</span>`).join("")}</div>
+              ${(p.networks || []).length ? `<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:4px">${p.networks.map(socBtn).join("")}</div>` : ""}</div></div>
           <div class="grid g4">
             <div class="kpi"><span class="eyebrow">Audience totale</span><span class="num">${kfmt(reach)}</span></div>
             <div class="kpi"><span class="eyebrow">Note</span><span class="num">${p.reviews_count ? Number(p.rating).toFixed(1) + " ★" : "—"}</span><span class="small muted">${p.reviews_count} avis</span></div>
@@ -169,8 +189,8 @@ async function viewInfProfile(slug) {
           ${p.bio ? `<p style="margin:0;line-height:1.6">${esc(p.bio)}</p>` : ""}
         </section>
         <section class="card stack"><h2 style="margin:0">Réseaux et statistiques</h2>
-          ${(p.networks || []).length ? (p.networks || []).map((n) => `<div class="inf-req"><span class="inf-net" style="font-size:.9rem">${INF_NETS[n.network] || n.network}</span>
-            <div style="flex:1;min-width:180px"><b>${n.url ? `<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.handle || "Voir le compte")}</a>` : esc(n.handle || "")}</b>${aud(n.audience)}</div>
+          ${(p.networks || []).length ? (p.networks || []).map((n) => `<div class="inf-req">${socBtn(n)}
+            <div style="flex:1;min-width:180px"><b>${INF_NETS[n.network] || n.network}</b> · ${netUrl(n) ? `<a href="${esc(netUrl(n))}" target="_blank" rel="noopener">${esc(n.handle || "Voir le compte")}</a>` : esc(n.handle || "")}${aud(n.audience)}</div>
             <div class="row" style="gap:20px"><div><b>${kfmt(n.followers)}</b><div class="small muted">abonnés</div></div>${n.avg_views ? `<div><b>${kfmt(n.avg_views)}</b><div class="small muted">vues moy.</div></div>` : ""}${n.engagement != null ? `<div><b>${String(n.engagement).replace(".", ",")} %</b><div class="small muted">engagement</div></div>` : ""}</div>
             ${n.verified ? `<span class="inf-badge v">✓ Chiffres vérifiés</span>` : `<span class="small muted">Vérification en cours</span>`}</div>`).join("") : `<p class="muted">Statistiques bientôt disponibles.</p>`}
         </section>
@@ -422,12 +442,13 @@ async function crProfile(body, { me, reload }) {
 async function crNetworks(body, { me, reload }) {
   const nets = await sb.from("influencer_networks").select("*").eq("influencer_id", me.id).order("followers", { ascending: false }).then((r) => r.data || []);
   body.innerHTML = `<div class="row between"><p class="muted" style="margin:0">Ajoute tes comptes avec des captures récentes de tes statistiques. StatuPub vérifie chaque chiffre.</p><button class="btn btn-primary btn-sm" id="nw-add">Ajouter un réseau</button></div>
-    ${nets.length ? nets.map((n) => `<div class="card inf-req"><span class="inf-net" style="font-size:.9rem">${INF_NETS[n.network]}</span><div style="flex:1;min-width:200px"><b>${esc(n.handle || "")}</b><div class="small muted">${kfmt(n.followers)} abonnés${n.avg_views ? " · " + kfmt(n.avg_views) + " vues moy." : ""}${n.engagement != null ? " · " + n.engagement + " %" : ""} · ${(n.proof_urls || []).length} capture(s)</div></div>
+    ${nets.length ? nets.map((n) => `<div class="card inf-req">${socBtn(n)}<div style="flex:1;min-width:200px"><b>${INF_NETS[n.network]} · ${esc(n.handle || "")}</b>${netUrl(n) ? "" : ` <span class="small" style="color:#8A3B2E">lien manquant</span>`}<div class="small muted">${kfmt(n.followers)} abonnés${n.avg_views ? " · " + kfmt(n.avg_views) + " vues moy." : ""}${n.engagement != null ? " · " + n.engagement + " %" : ""} · ${(n.proof_urls || []).length} capture(s)</div></div>
       ${n.verified_at ? `<span class="inf-badge v">✓ Vérifié</span>` : `<span class="small muted">En vérification</span>`}<button class="btn btn-ghost btn-sm" data-ed="${n.network}">Modifier</button><button class="btn btn-ghost btn-sm" data-del="${n.network}">Retirer</button></div>`).join("") : `<div class="empty">Aucun réseau ajouté.</div>`}`;
   const form = (n = {}) => openModal(`<h2 style="margin:0">${n.network ? "Modifier " + INF_NETS[n.network] : "Ajouter un réseau"}</h2>
     <form id="nw-f" class="stack">
       <label>Réseau<select id="nw-net" ${n.network ? "disabled" : ""}>${Object.entries(INF_NETS).map(([k, v]) => `<option value="${k}" ${k === n.network ? "selected" : ""}>${v}</option>`).join("")}</select></label>
-      <div class="grid g2"><label>Nom du compte<input id="nw-h" value="${esc(n.handle || "")}" placeholder="@moncompte" required></label><label>Lien du compte<input id="nw-u" type="url" value="${esc(n.url || "")}" placeholder="https://"></label></div>
+      <div class="grid g2"><label>Nom du compte<input id="nw-h" value="${esc(n.handle || "")}" placeholder="@moncompte" required></label><label>Lien du compte<input id="nw-u" type="url" value="${esc(n.url || "")}" placeholder="https://www.tiktok.com/@moncompte" required></label></div>
+      <p class="small muted" style="margin:0">Ce lien s'ouvre quand une marque appuie sur le logo du réseau sur ton profil. Copie-le depuis ton application (Partager le profil → Copier le lien).</p>
       <div class="grid g3"><label>Abonnés<input id="nw-fo" type="number" min="0" value="${n.followers ?? ""}" required></label><label>Vues moyennes<input id="nw-av" type="number" min="0" value="${n.avg_views ?? ""}"></label><label>Engagement (%)<input id="nw-en" type="number" min="0" max="100" step="0.1" value="${n.engagement ?? ""}"></label></div>
       <div class="grid g2"><label>Audience femmes / hommes<input id="nw-g" value="${esc(n.audience?.["Femmes/Hommes"] || "")}" placeholder="Ex. : 62 % / 38 %"></label><label>Âge principal<input id="nw-a" value="${esc(n.audience?.["Âge"] || "")}" placeholder="Ex. : 18-34 ans"></label></div>
       <label>Pays principaux<input id="nw-c" value="${esc(n.audience?.["Pays"] || "")}" placeholder="Ex. : Sénégal 70 %, France 12 %"></label>

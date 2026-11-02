@@ -49,3 +49,5 @@
 .inf-req{border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-wrap:wrap;gap:14px;align-items:center}
 .inf-video{width:100%;max-height:420px;border-radius:14px;background:#111}
 @media (max-width:720px){.inf-layout{margin-top:-60px}.inf-aside{position:static}}
+.inf-soc{width:42px;height:42px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;flex:none;text-decoration:none;box-shadow:0 2px 6px rgba(0,0,0,.15)}
+.inf-soc:hover{transform:translateY(-1px)}
