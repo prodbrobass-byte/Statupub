@@ -79,7 +79,9 @@ async function loadInfRibbon() {
   try { list = await rpc("inf_ribbon"); } catch { return; }
   if (!list?.length || !document.body.contains(box)) return;
   const pills = list.length < 6 ? [...list, ...list, ...list] : list;
-  const pill = (x, hid) => `<a class="inf-pill" href="#/influence/${esc(x.slug)}" ${hid ? 'aria-hidden="true" tabindex="-1"' : ""}>${infAva(x.avatar, x.name)}<span><b>${esc(x.name)}</b>${x.certified ? " ✓" : ""}<small>${esc(x.cat || "Créateur")}</small></span></a>`;
+  const pill = (x, hid) => `<a class="inf-tile" href="#/influence/${esc(x.slug)}" ${hid ? 'aria-hidden="true" tabindex="-1"' : ""}>
+    <span class="inf-tile-img" style="background:${esc(x.color || "#0E3B36")}">${x.avatar ? `<img src="${esc(x.avatar)}" alt="" loading="lazy">` : `<span class="ini">${infIni(x.name)}</span>`}${x.certified ? `<span class="inf-badge">✓ Certifié</span>` : ""}</span>
+    <span class="inf-tile-txt"><b>${esc(x.name)}</b><small>${esc(x.cat || "Créateur")}</small></span></a>`;
   box.innerHTML = `<section class="inf-ribbon" aria-labelledby="inf-rb-h"><div class="wrap row between" style="margin-bottom:18px;flex-wrap:wrap;gap:12px">
       <div><p class="eyebrow" style="color:var(--saffron)">Espace Pub Influenceur</p><h2 id="inf-rb-h" style="margin:4px 0 0">Nos influenceurs</h2></div>
       <a class="btn btn-primary btn-sm" href="#/influence">Voir tous les créateurs</a></div>
