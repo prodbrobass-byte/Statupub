@@ -334,10 +334,15 @@ function viewInfInvite(code) {
   };
 }
 
-/* ---------- Espace créateur ---------- */
-async function viewCreateur(tab = "demandes") {
+/* ---------- Espace créateur (ou profil géré par l'admin quand CR.inf est défini) ---------- */
+const CR = { inf: null };
+const crA = (o = {}) => CR.inf ? { ...o, p_inf: CR.inf } : o;
+const crHash = (t) => (CR.inf ? `#/admin/createur/${CR.inf}?t=` : "#/createur?t=") + t;
+const crGo = (t) => { const h = crHash(t); if (location.hash === h) viewCreateur(t, CR.inf); else location.hash = h; };
+async function viewCreateur(tab = "demandes", infId = null) {
+  CR.inf = infId || null;
   app.innerHTML = `<div class="spinner"></div>`;
-  const [me, bk, w] = await Promise.all([rpc("inf_mine"), rpc("inf_my_bookings"), rpc("inf_creator_wallet")]);
+  const [me, bk, w] = await Promise.all([CR.inf ? sb.from("influencers").select("*").eq("id", CR.inf).maybeSingle().then((r) => r.data) : rpc("inf_mine"), rpc("inf_my_bookings", crA()), rpc("inf_creator_wallet", crA())]);
   if (!me?.id) { app.innerHTML = `<main class="wrap"><div class="empty">Profil créateur introuvable. Contacte StatuPub.</div></main>`; return; }
   bk.forEach((x) => infBk.set(x.id, x));
   const req = bk.filter((x) => x.status === "awaiting_creator");
@@ -346,10 +351,14 @@ async function viewCreateur(tab = "demandes") {
   const tabs = [["demandes", "Demandes", req.length], ["campagnes", "Campagnes", live.filter((x) => ["accepted", "changes_requested", "content_approved"].includes(x.status)).length], ["profil", "Mon profil"], ["reseaux", "Réseaux"], ["formules", "Formules"], ["gains", "Gains"]];
   const visible = me.status === "verified" || me.status === "certified";
   app.innerHTML = `<main class="wrap">
-    <div class="page-head"><div class="row" style="gap:14px">${infAva(me.avatar_url, me.display_name)}<div><p class="eyebrow">Espace créateur</p><h1 style="font-size:2rem;margin:0">${esc(me.display_name)}</h1></div></div>
-      <div class="row"><a class="btn btn-ghost btn-sm" href="#/messages">💬 Messages${unread ? ` (${unread})` : ""}</a><a class="btn btn-ghost btn-sm" href="#/influence/${esc(me.slug)}">Voir mon profil public</a></div></div>
-    ${!me.terms_accepted_at ? `<div class="notice warn" style="margin-bottom:16px"><div><b>Accepte la charte créateur</b><p class="small muted">Obligatoire avant d'accepter ta première campagne.</p></div><button class="btn btn-ink btn-sm" id="cr-terms">Lire et accepter</button></div>` : ""}
-    ${!visible ? `<div class="notice ${me.status === "rejected" ? "warn" : "info"}" style="margin-bottom:16px"><div><b>${me.status === "pending" ? "Profil en vérification" : me.status === "hidden" ? "Profil masqué" : "Profil refusé"}</b><p class="small muted">${me.status === "pending" ? "Complète ton profil, tes réseaux (avec captures de statistiques) et au moins une formule. StatuPub vérifie et publie ton profil." : "Contacte StatuPub pour en savoir plus."}</p></div></div>` : ""}
+    ${CR.inf ? `<div class="notice info" style="margin-bottom:16px;flex-wrap:wrap"><div style="flex:1;min-width:240px"><b>Profil géré par StatuPub</b><p class="small muted">Tu remplis et gères ce profil à la place du créateur : profil, réseaux, formules, réponses aux marques, envoi des vidéos. ${me.user_id ? "Le créateur a aussi accès à son compte." : "Le créateur n'a pas encore de compte."}</p></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap"><a class="btn btn-ghost btn-sm" href="#/admin?t=influence&s=createurs">← Tous les créateurs</a>
+        ${me.status !== "verified" ? `<button class="btn btn-ink btn-sm" data-adst="verified">Publier (vérifié)</button>` : ""}${me.status !== "certified" ? `<button class="btn btn-primary btn-sm" data-adst="certified">Publier (certifié)</button>` : ""}${["verified", "certified"].includes(me.status) ? `<button class="btn btn-ghost btn-sm" data-adst="hidden">Masquer</button>` : ""}
+        ${!me.user_id ? `<button class="btn btn-ok btn-sm" id="ad-acc">Donner l'accès au créateur</button>` : ""}</div></div>` : ""}
+    <div class="page-head"><div class="row" style="gap:14px">${infAva(me.avatar_url, me.display_name)}<div><p class="eyebrow">${CR.inf ? "Profil géré · statut : " + esc(me.status) : "Espace créateur"}</p><h1 style="font-size:2rem;margin:0">${esc(me.display_name)}</h1></div></div>
+      <div class="row"><a class="btn btn-ghost btn-sm" href="#/messages">💬 Messages${unread ? ` (${unread})` : ""}</a><a class="btn btn-ghost btn-sm" href="#/influence/${esc(me.slug)}">${CR.inf ? "Voir le profil public" : "Voir mon profil public"}</a></div></div>
+    ${!me.terms_accepted_at ? `<div class="notice warn" style="margin-bottom:16px"><div><b>${CR.inf ? "Charte créateur non acceptée" : "Accepte la charte créateur"}</b><p class="small muted">${CR.inf ? "Confirme que le créateur a donné son accord (à l'oral ou sur WhatsApp) avant d'accepter une campagne pour lui." : "Obligatoire avant d'accepter ta première campagne."}</p></div><button class="btn btn-ink btn-sm" id="cr-terms">${CR.inf ? "Le créateur est d'accord" : "Lire et accepter"}</button></div>` : ""}
+    ${!visible && !CR.inf ? `<div class="notice ${me.status === "rejected" ? "warn" : "info"}" style="margin-bottom:16px"><div><b>${me.status === "pending" ? "Profil en vérification" : me.status === "hidden" ? "Profil masqué" : "Profil refusé"}</b><p class="small muted">${me.status === "pending" ? "Complète ton profil, tes réseaux (avec captures de statistiques) et au moins une formule. StatuPub vérifie et publie ton profil." : "Contacte StatuPub pour en savoir plus."}</p></div></div>` : ""}
     <div class="grid g4" style="margin-bottom:20px">
       <div class="card kpi"><span class="eyebrow">En cours</span><div>${money(w.pending)}</div><span class="small muted">campagnes acceptées</span></div>
       <div class="card kpi"><span class="eyebrow">À recevoir</span><div>${money(w.payable)}</div><span class="small muted">versé ${state.settings?.inf_payout_hours || 72} h après vérification</span></div>
@@ -358,11 +367,13 @@ async function viewCreateur(tab = "demandes") {
     </div>
     <div class="tabs" role="tablist">${tabs.map(([k, l, n]) => `<button class="tab" role="tab" aria-selected="${k === tab}" data-t="${k}">${l}${n ? `<span class="count">${n}</span>` : ""}</button>`).join("")}</div>
     <div id="cr-body" class="stack" style="margin-top:20px"></div></main>`;
-  app.querySelectorAll("[data-t]").forEach((b) => b.onclick = () => location.hash = "#/createur?t=" + b.dataset.t);
-  $("#cr-terms")?.addEventListener("click", () => infTermsModal("creator", () => viewCreateur(tab)));
-  const body = $("#cr-body"); const reload = () => viewCreateur(tab);
+  app.querySelectorAll("[data-t]").forEach((b) => b.onclick = () => location.hash = crHash(b.dataset.t));
+  $("#cr-terms")?.addEventListener("click", () => CR.inf ? infTermsModal("creator", () => viewCreateur(tab, CR.inf)) : infTermsModal("creator", () => viewCreateur(tab)));
+  app.querySelectorAll("[data-adst]").forEach((b) => b.onclick = async () => { busy(b, true); try { await rpc("inf_admin_set_status", { p_id: me.id, p_status: b.dataset.adst }); toast("Statut mis à jour"); viewCreateur(tab, CR.inf); } catch (e) { toast(errMsg(e), true); busy(b, false); } });
+  $("#ad-acc")?.addEventListener("click", async () => { try { const c = await rpc("inf_admin_new_code", { p_id: me.id }); inviteLink(c, me.display_name); } catch (e) { toast(errMsg(e), true); } });
+  const body = $("#cr-body"); const reload = () => viewCreateur(tab, CR.inf);
   const fn = { demandes: crRequests, campagnes: crCampaigns, profil: crProfile, reseaux: crNetworks, formules: crPackages, gains: crGains }[tab] || crRequests;
-  try { await fn(body, { me, bk, req, live, reload }); } catch (e) { body.innerHTML = `<div class="notice warn">${esc(errMsg(e))}</div>`; }
+  try { await fn(body, { me, bk, req, live, reload, admin: !!CR.inf }); } catch (e) { body.innerHTML = `<div class="notice warn">${esc(errMsg(e))}</div>`; }
 }
 const bkInfo = (x, side) => `<div style="flex:1;min-width:240px" class="stack small">
   <div class="row" style="gap:8px;flex-wrap:wrap"><b style="font-size:1rem">${esc(side === "brand" ? x.influencer_name : x.brand_company || "Marque")}</b>${infSt(x.status)}${x.kind === "offer" ? `<span class="inf-net">Offre</span>` : ""}</div>
@@ -371,20 +382,20 @@ const bkInfo = (x, side) => `<div style="flex:1;min-width:240px" class="stack sm
   ${x.link ? `<div>Lien : <a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.link)}</a></div>` : ""}
   ${x.brand_comment ? `<div class="notice warn small"><span>Commentaire de la marque : ${esc(x.brand_comment)}</span></div>` : ""}
   ${x.post_url ? `<div>Publication : <a href="${esc(x.post_url)}" target="_blank" rel="noopener">voir</a></div>` : ""}${bkLinks(x)}</div>`;
-async function crRequests(body, { req }) {
+async function crRequests(body, { req, me }) {
   body.innerHTML = req.length ? req.map((x) => `<div class="card inf-req">${bkInfo(x, "creator")}
     <div class="stack" style="gap:8px;align-items:flex-end"><div><span class="small muted">Pour toi</span> <span class="inf-price">${fcfa(x.net)} F</span></div>
       <span class="small muted">Réponds avant le ${dateTimeFr(x.expires_at)}</span>
       <div class="row"><button class="btn btn-ghost btn-sm" data-no="${x.id}">Refuser</button><button class="btn btn-ok btn-sm" data-yes="${x.id}">Accepter</button></div></div></div>`).join("")
     : `<div class="empty">Aucune demande en attente. Les nouvelles réservations arrivent ici (et en notification).</div>`;
   body.querySelectorAll("[data-yes]").forEach((b) => b.onclick = async () => {
-    if (!infBk.get(b.dataset.yes) || !(await rpc("inf_mine")).terms_accepted_at) return infTermsModal("creator", () => b.click());
+    if (!me.terms_accepted_at) { if (CR.inf) return toast("Clique d'abord « Le créateur est d'accord » en haut de la page", true); return infTermsModal("creator", () => viewCreateur("demandes")); }
     busy(b, true);
-    try { await rpc("inf_respond", { p_id: b.dataset.yes, p_accept: true }); toast("Campagne acceptée. Au travail !"); location.hash = "#/createur?t=campagnes"; } catch (e) { toast(errMsg(e), true); busy(b, false); } });
+    try { await rpc("inf_respond", crA({ p_id: b.dataset.yes, p_accept: true })); toast("Campagne acceptée. Au travail !"); crGo("campagnes"); } catch (e) { toast(errMsg(e), true); busy(b, false); } });
   body.querySelectorAll("[data-no]").forEach((b) => b.onclick = () => openModal(`<h2 style="margin:0">Refuser la demande</h2><p class="small muted" style="margin:0">La marque est remboursée intégralement.</p>
     <label>Raison (facultatif)<textarea id="rf-r" rows="3" maxlength="300" placeholder="Ex. : pas disponible à cette date"></textarea></label>
     <div class="row"><button class="btn btn-bad" id="rf-go">Refuser</button><button class="btn btn-ghost" data-close>Annuler</button></div>`, (m) => {
-    $("#rf-go", m).onclick = async (e) => { busy(e.target, true); try { await rpc("inf_respond", { p_id: b.dataset.no, p_accept: false, p_reason: $("#rf-r", m).value }); closeModal(); toast("Demande refusée."); viewCreateur("demandes"); } catch (err) { toast(errMsg(err), true); busy(e.target, false); } };
+    $("#rf-go", m).onclick = async (e) => { busy(e.target, true); try { await rpc("inf_respond", crA({ p_id: b.dataset.no, p_accept: false, p_reason: $("#rf-r", m).value })); closeModal(); toast("Demande refusée."); crGo("demandes"); } catch (err) { toast(errMsg(err), true); busy(e.target, false); } };
   }));
 }
 async function crCampaigns(body, { live, bk }) {
@@ -411,14 +422,14 @@ async function crCampaigns(body, { live, bk }) {
       if (f && f.size > 200 * 1024 * 1024) return toast("Fichier trop lourd (200 Mo max). Envoie plutôt un lien.", true);
       busy(btn, true);
       try { if (f) { btn.textContent = "Envoi du fichier…"; url = await infUpload("influence-content", `${b.dataset.send}/${Date.now()}.${extOf(f)}`, f); }
-        await rpc("inf_submit_content", { p_id: b.dataset.send, p_url: url, p_note: $("#sv-note", m).value }); closeModal(); toast("Vidéo envoyée à la marque."); viewCreateur("campagnes"); }
+        await rpc("inf_submit_content", crA({ p_id: b.dataset.send, p_url: url, p_note: $("#sv-note", m).value })); closeModal(); toast("Vidéo envoyée à la marque."); crGo("campagnes"); }
       catch (err) { toast(errMsg(err), true); busy(btn, false); }
     };
   }));
   body.querySelectorAll("[data-pub]").forEach((b) => b.onclick = () => openModal(`<h2 style="margin:0">Lien de la publication</h2>
     <label>Lien du post (TikTok, Instagram…)<input id="pb-url" type="url" placeholder="https://" required></label>
     <div class="row"><button class="btn btn-ok" id="pb-go">Confirmer</button><button class="btn btn-ghost" data-close>Annuler</button></div>`, (m) => {
-    $("#pb-go", m).onclick = async (e) => { busy(e.target, true); try { await rpc("inf_mark_published", { p_id: b.dataset.pub, p_post_url: $("#pb-url", m).value.trim() }); closeModal(); toast("Publication enregistrée. StatuPub vérifie et lance ton paiement."); viewCreateur("campagnes"); } catch (err) { toast(errMsg(err), true); busy(e.target, false); } };
+    $("#pb-go", m).onclick = async (e) => { busy(e.target, true); try { await rpc("inf_mark_published", crA({ p_id: b.dataset.pub, p_post_url: $("#pb-url", m).value.trim() })); closeModal(); toast(CR.inf ? "Publication enregistrée. Vérifie-la dans Réservations." : "Publication enregistrée. StatuPub vérifie et lance ton paiement."); crGo("campagnes"); } catch (err) { toast(errMsg(err), true); busy(e.target, false); } };
   }));
 }
 async function crProfile(body, { me, reload }) {
@@ -447,8 +458,8 @@ async function crProfile(body, { me, reload }) {
     try {
       const up = async (inp, kind) => { const f = $(inp).files[0]; if (!f) return ""; if (f.size > 8 * 1024 * 1024) throw new Error("Image trop lourde (8 Mo max)"); return infUpload("influence", `${me.id}/${kind}-${Date.now()}.${extOf(f)}`, f); };
       const ava = await up("#cp-ava", "avatar"), ban = $("#cp-noban")?.checked ? "-" : await up("#cp-ban", "banner");
-      await rpc("inf_update_profile", { p_name: $("#cp-name").value, p_bio: $("#cp-bio").value, p_city: $("#cp-city").value, p_country: $("#cp-country").value,
-        p_languages: $("#cp-lang").value.split(",").map((s) => s.trim()).filter(Boolean), p_categories: cats, p_color: color, p_avatar: ava, p_banner: ban, p_accepting: $("#cp-acc").checked });
+      await rpc("inf_update_profile", crA({ p_name: $("#cp-name").value, p_bio: $("#cp-bio").value, p_city: $("#cp-city").value, p_country: $("#cp-country").value,
+        p_languages: $("#cp-lang").value.split(",").map((s) => s.trim()).filter(Boolean), p_categories: cats, p_color: color, p_avatar: ava, p_banner: ban, p_accepting: $("#cp-acc").checked }));
       toast("Profil enregistré"); reload();
     } catch (err) { toast(errMsg(err), true); busy(b, false); }
   };
@@ -473,19 +484,19 @@ async function crNetworks(body, { me, reload }) {
       e.preventDefault(); const b = e.submitter; busy(b, true);
       try {
         const files = [...$("#nw-p", m).files].slice(0, 5); const proofs = [];
-        if (!n.network && !files.length) throw new Error("Ajoute au moins une capture de tes statistiques");
+        if (!n.network && !files.length && !CR.inf) throw new Error("Ajoute au moins une capture de tes statistiques");
         for (const f of files) { if (f.size > 8 * 1024 * 1024) throw new Error("Capture trop lourde (8 Mo max)"); proofs.push(await infUpload("influence", `${me.id}/proofs/${Date.now()}-${proofs.length}.${extOf(f)}`, f)); }
         const audience = {}; [["Femmes/Hommes", "#nw-g"], ["Âge", "#nw-a"], ["Pays", "#nw-c"]].forEach(([k, s]) => { const v = $(s, m).value.trim(); if (v) audience[k] = v; });
         const num = (s) => $(s, m).value === "" ? null : Number($(s, m).value);
-        await rpc("inf_save_network", { p_network: n.network || $("#nw-net", m).value, p_handle: $("#nw-h", m).value, p_url: $("#nw-u", m).value, p_followers: num("#nw-fo") || 0,
-          p_avg_views: num("#nw-av"), p_engagement: num("#nw-en"), p_audience: audience, p_proofs: proofs });
+        await rpc("inf_save_network", crA({ p_network: n.network || $("#nw-net", m).value, p_handle: $("#nw-h", m).value, p_url: $("#nw-u", m).value, p_followers: num("#nw-fo") || 0,
+          p_avg_views: num("#nw-av"), p_engagement: num("#nw-en"), p_audience: audience, p_proofs: proofs }));
         closeModal(); toast("Réseau enregistré"); reload();
       } catch (err) { toast(errMsg(err), true); busy(b, false); }
     };
   });
   $("#nw-add").onclick = () => form();
   body.querySelectorAll("[data-ed]").forEach((b) => b.onclick = () => form(nets.find((x) => x.network === b.dataset.ed)));
-  body.querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => { if (!confirm("Retirer ce réseau de ton profil ?")) return; try { await rpc("inf_delete_network", { p_network: b.dataset.del }); reload(); } catch (e) { toast(errMsg(e), true); } });
+  body.querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => { if (!confirm("Retirer ce réseau de ton profil ?")) return; try { await rpc("inf_delete_network", crA({ p_network: b.dataset.del })); reload(); } catch (e) { toast(errMsg(e), true); } });
 }
 async function crPackages(body, { me, reload }) {
   const pks = await sb.from("influencer_packages").select("*").eq("influencer_id", me.id).eq("active", true).order("sort").order("price").then((r) => r.data || []);
@@ -514,13 +525,13 @@ async function crPackages(body, { me, reload }) {
       paint(); };
     $("#pk-f", m).onsubmit = async (e) => { e.preventDefault(); const b = e.submitter; busy(b, true);
       const nets = pkSel.filter((z) => z !== "__all"); if (!nets.length) { busy(b, false); return toast("Choisis au moins un réseau", true); }
-      try { await rpc("inf_save_package", { p_id: x.id || null, p_title: $("#pk-t", m).value, p_description: $("#pk-d", m).value, p_network: null, p_networks: nets,
-        p_price: $("#pk-r", m).checked ? 0 : Number($("#pk-p", m).value) || 0, p_on_request: $("#pk-r", m).checked, p_active: true }); closeModal(); toast("Formule enregistrée"); reload(); }
+      try { await rpc("inf_save_package", crA({ p_id: x.id || null, p_title: $("#pk-t", m).value, p_description: $("#pk-d", m).value, p_network: null, p_networks: nets,
+        p_price: $("#pk-r", m).checked ? 0 : Number($("#pk-p", m).value) || 0, p_on_request: $("#pk-r", m).checked, p_active: true })); closeModal(); toast("Formule enregistrée"); reload(); }
       catch (err) { toast(errMsg(err), true); busy(b, false); } };
   }); };
   $("#pk-add").onclick = () => form();
   body.querySelectorAll("[data-ed]").forEach((b) => b.onclick = () => form(pks.find((x) => x.id === b.dataset.ed)));
-  body.querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => { if (!confirm("Retirer cette formule ?")) return; try { await rpc("inf_delete_package", { p_id: b.dataset.del }); reload(); } catch (e) { toast(errMsg(e), true); } });
+  body.querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => { if (!confirm("Retirer cette formule ?")) return; try { await rpc("inf_delete_package", crA({ p_id: b.dataset.del })); reload(); } catch (e) { toast(errMsg(e), true); } });
 }
 async function crGains(body, { bk }) {
   const rows = bk.filter((x) => ["verified", "paid_out", "published", "content_approved", "content_submitted", "accepted", "changes_requested"].includes(x.status));
@@ -624,6 +635,15 @@ function brandForm(b) {
   };
 }
 
+/* Lien d'accès à envoyer au créateur (WhatsApp) */
+function inviteLink(code, name) {
+  const link = `https://statupub.com/influenceur/?c=${code}`;
+  const wa = `https://wa.me/?text=${encodeURIComponent(`Bonjour ${name} 👋\n\nTon profil créateur est prêt sur l'Espace Pub Influenceur de StatuPub : les marques te réservent et tu es payé après chaque publication.\n\nCrée ton accès ici (lien personnel, valable une fois) :\n${link}`)}`;
+  openModal(`<h2 style="margin:0">Donner l'accès au créateur</h2><p class="small muted" style="margin:0">Envoie ce lien à ${esc(name)}. Il crée son mot de passe et retrouve son profil déjà rempli. Le lien ne sert qu'une fois. Tu peux continuer à gérer son profil après.</p>
+    <input readonly value="${esc(link)}" id="iv-l"><div class="row"><button class="btn btn-primary" id="iv-c">Copier</button><a class="btn btn-ok" href="${esc(wa)}" target="_blank" rel="noopener">Envoyer sur WhatsApp</a><button class="btn btn-ghost" data-close>Fermer</button></div>`,
+  (m) => { $("#iv-c", m).onclick = () => copy(link); });
+}
+
 /* ---------- Admin : onglet Influenceurs ---------- */
 async function adminInfluence(body, reload) {
   const ov = await rpc("inf_admin_overview");
@@ -648,11 +668,7 @@ async function adminInfluence(body, reload) {
   body.querySelectorAll("[data-s]").forEach((b) => b.onclick = () => location.hash = "#/admin?t=influence&s=" + b.dataset.s);
   const box = $("#ai-b");
   const act = async (btn, fn, args, msg) => { busy(btn, true); try { await rpc(fn, args); toast(msg || "Fait"); reload(); } catch (e) { toast(errMsg(e), true); busy(btn, false); } };
-  const inviteBox = (code, name) => { const link = `https://statupub.com/influenceur/?c=${code}`;
-    const wa = `https://wa.me/?text=${encodeURIComponent(`Bonjour ${name} 👋\n\nTu es invité(e) à rejoindre l'Espace Pub Influenceur de StatuPub : les marques te réservent et tu es payé après chaque publication.\n\nCrée ton profil créateur ici (lien personnel, valable une fois) :\n${link}`)}`;
-    openModal(`<h2 style="margin:0">Lien d'invitation</h2><p class="small muted" style="margin:0">Envoie ce lien à ${esc(name)}. Il ne sert qu'une fois.</p>
-      <input readonly value="${esc(link)}" id="iv-l"><div class="row"><button class="btn btn-primary" id="iv-c">Copier</button><a class="btn btn-ok" href="${esc(wa)}" target="_blank" rel="noopener">Envoyer sur WhatsApp</a><button class="btn btn-ghost" data-close>Fermer</button></div>`,
-    (m) => { $("#iv-c", m).onclick = () => copy(link); }); };
+  const inviteBox = (code, name) => inviteLink(code, name);
 
   if (sub === "candidatures") {
     box.innerHTML = apps.length ? apps.map((a) => { const tot = (a.networks || []).reduce((s, n) => s + Number(n.followers || 0), 0); const tel = String(a.phone || "").replace(/\D/g, "");
@@ -660,22 +676,23 @@ async function adminInfluence(body, reload) {
         <div><b>${esc(a.full_name)}</b> <span class="small muted">${dateTimeFr(a.created_at)}</span><div class="small muted">${esc([a.city, COUNTRIES?.[a.country]?.name].filter(Boolean).join(", "))} · ${esc(a.phone)}${a.email ? " · " + esc(a.email) : ""} · <b>${kfmt(tot)}</b> abonnés annoncés</div>
           <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:4px">${(a.categories || []).map((c) => `<span class="inf-net">${esc(c)}</span>`).join("")}</div></div>
         <div class="row" style="gap:6px"><a class="btn btn-ghost btn-sm" href="https://wa.me/${tel}" target="_blank" rel="noopener">WhatsApp</a>
-          ${a.status === "nouveau" ? `<button class="btn btn-ghost btn-sm" data-ap="${a.id}" data-ok="0">Refuser</button>` : ""}${a.status !== "refuse" ? `<button class="btn btn-primary btn-sm" data-ap="${a.id}" data-ok="1" data-nm="${esc(a.full_name)}">${a.status === "invite" ? "Nouveau lien" : "Inviter"}</button>` : `<span class="small muted">Refusée</span>`}</div></div>
+          ${a.status === "nouveau" ? `<button class="btn btn-ghost btn-sm" data-ap="${a.id}" data-ok="0">Refuser</button>` : ""}${a.status !== "refuse" ? (a.status === "invite" && a.influencer_id ? `<a class="btn btn-primary btn-sm" href="#/admin/createur/${a.influencer_id}?t=profil">Gérer le profil</a>` : `<button class="btn btn-primary btn-sm" data-ap="${a.id}" data-ok="1" data-nm="${esc(a.full_name)}">Créer le profil</button>`) : `<span class="small muted">Refusée</span>`}</div></div>
         <div class="row" style="gap:8px;flex-wrap:wrap">${(a.networks || []).map((n) => `<a class="inf-net" style="display:inline-flex;gap:6px;align-items:center;text-decoration:none" href="${esc(n.url)}" target="_blank" rel="noopener">${netIcon(n.network, 14)} ${INF_NETS[n.network]} · ${kfmt(n.followers)}</a>`).join("")}</div>
         ${a.message ? `<p class="small" style="margin:0">${esc(a.message)}</p>` : ""}</div>`; }).join("") : `<div class="empty">Aucune candidature. Partage le lien <b>statupub.com/influenceur/</b>.</div>`;
     box.querySelectorAll("[data-ap]").forEach((b) => b.onclick = async () => { const ok = b.dataset.ok === "1"; if (!ok && !confirm("Refuser cette candidature ?")) return; busy(b, true);
-      try { const r = await rpc("inf_admin_application", { p_id: b.dataset.ap, p_invite: ok }); if (ok && r?.code) { inviteBox(r.code, b.dataset.nm); setTimeout(reload, 50); } else reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } });
+      try { const r = await rpc("inf_admin_application", { p_id: b.dataset.ap, p_invite: ok }); if (ok && r?.id) { toast("Profil créé à partir de la candidature."); location.hash = `#/admin/createur/${r.id}?t=profil`; } else reload(); } catch (e) { toast(errMsg(e), true); busy(b, false); } });
   }
 
   if (sub === "createurs") {
     const ST = { pending: "À vérifier", verified: "Vérifié", certified: "Certifié", hidden: "Masqué", rejected: "Refusé" };
-    box.innerHTML = `<div class="row between"><p class="muted" style="margin:0">Invite un créateur : il reçoit un lien pour créer son compte et son profil.</p><button class="btn btn-primary btn-sm" id="ai-new">Inviter un créateur</button></div>
+    box.innerHTML = `<div class="row between"><p class="muted" style="margin:0">Ajoute un créateur et remplis son profil toi-même. Tu lui enverras son lien d'accès quand il sera prêt.</p><button class="btn btn-primary btn-sm" id="ai-new">Ajouter un créateur</button></div>
       ${ov.influencers.length ? ov.influencers.map((i) => `<div class="card stack" style="gap:10px"><div class="row" style="gap:14px;flex-wrap:wrap">
         <span style="width:14px;height:14px;border-radius:50%;background:${esc(i.color)}"></span>${infAva(i.avatar_url, i.display_name)}
         <div style="flex:1;min-width:200px"><b>${esc(i.display_name)}</b> <span class="inf-status" style="background:#EEF3F1;color:var(--ink)">${ST[i.status] || i.status}</span>
           <div class="small muted">${i.user_id ? esc(i.email || "Compte relié") : "Invitation pas encore utilisée"}${i.contact_phone ? " · " + esc(i.contact_phone) : ""}${i.city ? " · " + esc(i.city) : ""} · ${i.packages} formule(s)</div></div>
         <div class="row" style="gap:6px;flex-wrap:wrap">
-          ${!i.user_id ? `<button class="btn btn-ghost btn-sm" data-code="${i.id}" data-nm="${esc(i.display_name)}">Lien d'invitation</button>` : ""}
+          <a class="btn btn-primary btn-sm" href="#/admin/createur/${i.id}?t=profil">Gérer le profil</a>
+          ${!i.user_id ? `<button class="btn btn-ghost btn-sm" data-code="${i.id}" data-nm="${esc(i.display_name)}">Lien d'accès</button>` : ""}
           <a class="btn btn-ghost btn-sm" href="#/influence/${esc(i.slug)}">Profil</a>
           ${i.status !== "verified" ? `<button class="btn btn-ink btn-sm" data-st="verified" data-id="${i.id}">Vérifier</button>` : ""}
           ${i.status !== "certified" ? `<button class="btn btn-primary btn-sm" data-st="certified" data-id="${i.id}">Certifier</button>` : ""}
@@ -687,18 +704,18 @@ async function adminInfluence(body, reload) {
           ${n.verified_at ? `<span class="inf-badge v">✓</span><button class="btn btn-ghost btn-sm" data-net="${n.id}" data-ok="0">Retirer ✓</button>` : `<button class="btn btn-ok btn-sm" data-net="${n.id}" data-ok="1">Chiffres OK</button>`}</div>`).join("")}</div>` : ""}</div>`).join("")
       : `<div class="empty">Aucun créateur. Commence par inviter tes ~20 créateurs.</div>`}`;
     const anCats = [];
-    $("#ai-new").onclick = () => { anCats.splice(0); openModal(`<h2 style="margin:0">Inviter un créateur</h2><form id="an-f" class="stack">
+    $("#ai-new").onclick = () => { anCats.splice(0); openModal(`<h2 style="margin:0">Ajouter un créateur</h2><p class="small muted" style="margin:0">Juste l'essentiel : tu complètes le reste (photo, réseaux, formules) à l'étape suivante.</p><form id="an-f" class="stack">
       <label>Nom de créateur<input id="an-n" required minlength="2" maxlength="60"></label>
       <label>Adresse du profil (facultatif)<input id="an-s" placeholder="ex. : aminata-diallo" pattern="[a-z0-9-]{3,40}"></label>
       <div class="grid g2"><label>Téléphone<input id="an-p" type="tel"></label><label>E-mail<input id="an-e" type="email"></label></div>
       <label>Ville<input id="an-c"></label>
       <div class="stack" style="gap:6px"><b class="small">Catégories (4 max)</b>${chipRow("an-k", INF_CATS.map((c) => [c, c]), [], "")}</div>
-      <div class="row"><button class="btn btn-primary" type="submit">Créer l'invitation</button><button class="btn btn-ghost" type="button" data-close>Annuler</button></div></form>`, (m) => {
+      <div class="row"><button class="btn btn-primary" type="submit">Créer et remplir le profil</button><button class="btn btn-ghost" type="button" data-close>Annuler</button></div></form>`, (m) => {
       bindChips($("#an-k", m), anCats, null, 4);
       $("#an-f", m).onsubmit = async (e) => { e.preventDefault(); const b = e.submitter; busy(b, true);
         try { const r = await rpc("inf_admin_create", { p_name: $("#an-n", m).value, p_slug: $("#an-s", m).value, p_phone: $("#an-p", m).value, p_email: $("#an-e", m).value, p_city: $("#an-c", m).value,
           p_categories: [...anCats] });
-          const nm = $("#an-n", m).value; closeModal(); inviteBox(r.code, nm); setTimeout(reload, 50); }
+          closeModal(); toast("Créateur ajouté. Remplis son profil."); location.hash = `#/admin/createur/${r.id}?t=profil`; }
         catch (err) { toast(errMsg(err), true); busy(b, false); } };
     }); };
     box.querySelectorAll("[data-code]").forEach((b) => b.onclick = async () => { try { const c = await rpc("inf_admin_new_code", { p_id: b.dataset.code }); inviteBox(c, b.dataset.nm); } catch (e) { toast(errMsg(e), true); } });
@@ -806,7 +823,7 @@ function infTermsModal(kind, onOk) {
     <label class="row" style="gap:8px;font-weight:600"><input type="checkbox" id="tm-ok" style="width:auto"> J'ai lu et j'accepte ces conditions</label>
     <div class="row"><button class="btn btn-primary" id="tm-go" disabled>Accepter</button><button class="btn btn-ghost" data-close>Plus tard</button></div>`, (m) => {
     $("#tm-ok", m).onchange = (e) => { $("#tm-go", m).disabled = !e.target.checked; };
-    $("#tm-go", m).onclick = async (e) => { busy(e.target, true); try { await rpc("inf_accept_terms"); closeModal(); toast("Conditions acceptées"); onOk?.(); } catch (err) { toast(errMsg(err), true); busy(e.target, false); } };
+    $("#tm-go", m).onclick = async (e) => { busy(e.target, true); try { await rpc("inf_accept_terms", kind === "creator" ? crA() : {}); closeModal(); toast("Conditions acceptées"); onOk?.(); } catch (err) { toast(errMsg(err), true); busy(e.target, false); } };
   });
 }
 /* Contrat de collaboration d'une réservation : page imprimable / PDF */
