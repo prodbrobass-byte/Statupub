@@ -715,7 +715,7 @@ async function adminInfluence(body, reload) {
   const pendRev = ov.reviews.filter((x) => x.status === "pending");
   const apps = ov.applications || []; const newApps = apps.filter((x) => x.status === "nouveau");
   const comm = ov.bookings.filter((x) => ["verified", "paid_out"].includes(x.status)).reduce((s, x) => s + Number(x.creator_fee) + Number(x.brand_fee), 0);
-  const subs = [["candidatures", "Candidatures", newApps.length], ["createurs", "Créateurs", pendingInf.length], ["reservations", "Réservations", toVerify.length + payable.length + disputes.length], ["marques", "Marques", ov.brands.filter((x) => !x.verified_at).length], ["demandes", "Demandes de prix", newReq.length], ["avis", "Avis", pendRev.length]];
+  const subs = [["devis", "🤖 Devis IA"], ["candidatures", "Candidatures", newApps.length], ["createurs", "Créateurs", pendingInf.length], ["reservations", "Réservations", toVerify.length + payable.length + disputes.length], ["marques", "Marques", ov.brands.filter((x) => !x.verified_at).length], ["demandes", "Demandes de prix", newReq.length], ["avis", "Avis", pendRev.length]];
   body.innerHTML = `<div class="grid g4" style="margin-bottom:16px">
       <div class="card kpi"><span class="eyebrow">Créateurs visibles</span><span class="num">${ov.influencers.filter((x) => ["verified", "certified"].includes(x.status)).length}</span><span class="small muted">${pendingInf.length} à vérifier</span></div>
       <div class="card kpi"><span class="eyebrow">Publications à vérifier</span><span class="num">${toVerify.length}</span></div>
@@ -727,6 +727,8 @@ async function adminInfluence(body, reload) {
   const box = $("#ai-b");
   const act = async (btn, fn, args, msg) => { busy(btn, true); try { await rpc(fn, args); toast(msg || "Fait"); reload(); } catch (e) { toast(errMsg(e), true); busy(btn, false); } };
   const inviteBox = (code, name) => inviteLink(code, name);
+
+  if (sub === "devis") return adminQuotes(box, ov);
 
   if (sub === "candidatures") {
     box.innerHTML = apps.length ? apps.map((a) => { const tot = (a.networks || []).reduce((s, n) => s + Number(n.followers || 0), 0); const tel = String(a.phone || "").replace(/\D/g, "");
@@ -998,4 +1000,157 @@ async function viewInfMessages(id) {
   try { await load(false); } catch (e) { box.innerHTML = `<div class="notice warn">${esc(errMsg(e))}</div>`; return; }
   const hash = location.hash;
   infChatTimer = setInterval(() => { if (location.hash !== hash) return clearInterval(infChatTimer); if (!document.hidden) load(true).catch(() => {}); }, 6000);
+}
+
+/* ==================== Devis IA (admin) ==================== */
+async function aiCall(body) {
+  const { data: r, error } = await sb.functions.invoke("ai", { body });
+  if (error) { let m = error.message; try { m = (await error.context.json()).error || m; } catch {} throw new Error(m); }
+  if (r?.error) throw new Error(r.error);
+  return r;
+}
+const qTotals = (items, fee) => { const sub = items.reduce((s, x) => s + (Number(x.price) || 0), 0), f = Math.round(sub * fee); return { subtotal: sub, fee: f, total: sub + f, reach: items.reduce((s, x) => s + (Number(x.reach) || 0), 0) }; };
+const dLong = (v) => v ? new Date(v + (String(v).length === 10 ? "T12:00:00" : "")).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "long" }) : "à fixer";
+
+async function adminQuotes(box, ov) {
+  const { data: list } = await sb.from("influence_quotes").select("*").order("created_at", { ascending: false }).limit(60);
+  const ST = { draft: "Brouillon", sent: "Envoyé", accepted: "Accepté", refused: "Refusé", expired: "Expiré" };
+  box.innerHTML = `<div class="row between" style="flex-wrap:wrap;gap:10px"><p class="muted" style="margin:0">Décris le besoin d'une marque : l'IA choisit les créateurs, calcule le devis et prépare le plan de campagne.</p><button class="btn btn-primary btn-sm" id="q-new">🤖 Nouveau devis IA</button></div>
+    ${(list || []).length ? `<div class="table"><table><thead><tr><th>N°</th><th>Marque</th><th>Créateurs</th><th>Total</th><th>Statut</th><th></th></tr></thead><tbody>${list.map((q) => `<tr><td><b>${esc(q.number)}</b><div class="small muted">${dateTimeFr(q.created_at)}</div></td><td>${esc(q.brand_name)}</td>
+      <td class="small">${esc((q.items || []).map((x) => x.influencer_name).join(", "))}</td><td>${money(q.total)}</td><td>${ST[q.status] || q.status}</td><td><button class="btn btn-ghost btn-sm" data-q="${q.id}">Ouvrir</button></td></tr>`).join("")}</tbody></table></div>`
+      : `<div class="empty">Aucun devis pour l'instant.</div>`}`;
+  $("#q-new").onclick = () => quoteEditor(box, ov, null);
+  box.querySelectorAll("[data-q]").forEach((b) => b.onclick = () => quoteEditor(box, ov, list.find((q) => q.id === b.dataset.q)));
+}
+
+async function quoteEditor(box, ov, q) {
+  const fee = fees().b;
+  const st = { id: q?.id || null, number: q?.number || "", status: q?.status || "draft", req: { ...(q?.request || {}) }, brand_id: q?.brand_id || null, brand_name: q?.brand_name || "", contact: q?.contact || "",
+    ai: q ? { summary: q.request?.summary || "", questions: q.request?.questions || [], options: q.options || [], plan: q.plan || [] } : null, chosen: q?.chosen || 0, valid: q?.valid_until || "" };
+  if (st.ai && st.ai.options[st.chosen]) st.ai.options[st.chosen].items = q.items || st.ai.options[st.chosen].items;
+  const nets = [...(st.req.networks || [])];
+  const { data: pkAll } = await sb.from("influencer_packages").select("id, influencer_id, title, price, on_request, networks, network, influencers(display_name, status)").eq("active", true);
+  const pkList = (pkAll || []).filter((p) => ["verified", "certified"].includes(p.influencers?.status));
+  box.innerHTML = `<div class="row between" style="flex-wrap:wrap;gap:10px"><h2 style="margin:0">${st.number ? "Devis " + esc(st.number) : "Nouveau devis IA"}</h2><button class="btn btn-ghost btn-sm" id="q-back">← Tous les devis</button></div>
+    <form class="card stack" id="q-f">
+      <div class="grid g2"><label>Marque<input id="q-brand" list="q-brands" required value="${esc(st.brand_name)}" placeholder="Nom de l'entreprise"><datalist id="q-brands">${ov.brands.map((b) => `<option value="${esc(b.company)}">`).join("")}</datalist></label>
+        <label>Contact (WhatsApp)<input id="q-contact" type="tel" value="${esc(st.contact)}" placeholder="+221…"></label></div>
+      <label>Besoin de la marque<textarea id="q-need" rows="4" required minlength="10" placeholder="Ex. : Lancement d'un parfum pour femmes 18-35 ans à Dakar, on veut des vidéos naturelles qui montrent le produit, campagne en décembre.">${esc(st.req.need || "")}</textarea></label>
+      <div class="grid g4"><label>Budget total (F)<input id="q-budget" type="number" min="0" step="5000" value="${esc(st.req.budget || "")}"></label><label>Début<input id="q-start" type="date" value="${esc(st.req.start || "")}"></label>
+        <label>Fin<input id="q-end" type="date" value="${esc(st.req.end || "")}"></label><label>Pays<select id="q-country"><option value="">Tous</option>${countryOptions(st.req.country || "")}</select></label></div>
+      <label>Ville (facultatif)<input id="q-city" value="${esc(st.req.city || "")}"></label>
+      <div class="stack" style="gap:6px"><b class="small">Réseaux souhaités</b>${chipRow("q-nets", Object.entries(INF_NETS), nets, "Libre")}</div>
+      <div class="row"><button class="btn btn-primary" type="submit">🤖 ${st.ai ? "Régénérer avec l'IA" : "Générer le devis avec l'IA"}</button><span class="small muted">L'IA met environ 20 à 40 secondes.</span></div>
+    </form><div id="q-out" class="stack" style="margin-top:16px"></div>`;
+  bindChips($("#q-nets"), nets, null);
+  $("#q-back").onclick = () => adminQuotes(box, ov);
+  const readForm = () => { st.brand_name = $("#q-brand").value.trim(); st.contact = $("#q-contact").value.trim(); st.brand_id = ov.brands.find((b) => b.company.toLowerCase() === st.brand_name.toLowerCase())?.id || null;
+    Object.assign(st.req, { brand: st.brand_name, need: $("#q-need").value.trim(), budget: Number($("#q-budget").value) || 0, start: $("#q-start").value, end: $("#q-end").value, country: $("#q-country").value, city: $("#q-city").value.trim(), networks: [...nets] }); };
+  $("#q-f").onsubmit = async (e) => {
+    e.preventDefault(); readForm(); const b = e.submitter; busy(b, true); b.textContent = "L'IA prépare le devis…";
+    try { const r = await aiCall({ action: "inf_quote", ...st.req }); st.ai = r; st.chosen = 0; draw(); toast("Devis proposé : vérifie et ajuste avant d'envoyer"); }
+    catch (err) { toast(errMsg(err), true); }
+    busy(b, false);
+  };
+  const out = $("#q-out");
+  const cur = () => st.ai?.options?.[st.chosen];
+  function draw() {
+    if (!st.ai) { out.innerHTML = ""; return; }
+    const o = cur(); const t = qTotals(o.items, fee); const budget = Number(st.req.budget) || 0;
+    out.innerHTML = `${st.ai.summary ? `<div class="notice info"><div><b>Besoin compris par l'IA</b><p class="small" style="margin:4px 0 0">${esc(st.ai.summary)}</p></div></div>` : ""}
+      ${(st.ai.questions || []).length ? `<div class="notice warn"><div><b>À demander à la marque</b><ul class="small" style="margin:4px 0 0;padding-left:18px">${st.ai.questions.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div></div>` : ""}
+      <div class="inf-chips">${st.ai.options.map((x, i) => { const tt = qTotals(x.items, fee); return `<button type="button" class="inf-chip" data-opt="${i}" aria-pressed="${i === st.chosen}">${esc(x.name)} · ${fcfa(tt.total)} F</button>`; }).join("")}</div>
+      <section class="card stack">
+        <div><h3 style="margin:0">Option « ${esc(o.name)} »</h3>${o.strategy ? `<p class="small muted" style="margin:4px 0 0">${esc(o.strategy)}</p>` : ""}</div>
+        <label class="small">Pourquoi cette option (visible sur le devis)<textarea id="q-why" rows="3">${esc(o.why || "")}</textarea></label>
+        <div class="table"><table><thead><tr><th>Créateur</th><th>Formule</th><th>Date</th><th>Prix (F)</th><th>Vues est.</th><th></th></tr></thead><tbody>
+          ${o.items.map((x, i) => `<tr><td><b>${esc(x.influencer_name)}</b>${x.certified ? ' <span class="inf-badge" style="font-size:.65rem;padding:2px 6px">✓</span>' : ""}<details class="small"><summary>Brief</summary><textarea data-brief="${i}" rows="5" style="margin-top:6px">${esc(x.brief || "")}</textarea></details></td>
+            <td>${esc(x.package_title)}<div>${pkNets({ networks: x.networks })}</div>${x.on_request ? `<div class="small" style="color:#8A3B2E">Prix sur demande : fixe-le</div>` : ""}</td>
+            <td><input type="date" data-date="${i}" value="${esc(x.date || "")}" style="min-width:140px"><input data-time="${i}" value="${esc(x.time || "")}" placeholder="19:00" style="margin-top:4px;max-width:90px"></td>
+            <td><input type="number" min="0" step="1000" data-price="${i}" value="${x.price || 0}" style="max-width:120px"></td><td>${kfmt(x.reach)}</td>
+            <td><button type="button" class="btn btn-ghost btn-sm" data-rm="${i}" aria-label="Retirer">✕</button></td></tr>`).join("")}
+        </tbody></table></div>
+        <div class="row" style="gap:8px;flex-wrap:wrap"><select id="q-add" style="max-width:420px"><option value="">+ Ajouter un créateur / une formule…</option>${pkList.map((p) => `<option value="${p.id}">${esc(p.influencers.display_name)} · ${esc(p.title)} · ${p.on_request ? "sur demande" : fcfa(p.price) + " F"}</option>`).join("")}</select></div>
+        <div class="stack small" style="gap:4px;border-top:1px solid var(--line);padding-top:10px;max-width:420px;margin-left:auto;width:100%">
+          <div class="row between"><span>Prix des créateurs</span><b>${fcfa(t.subtotal)} F</b></div><div class="row between"><span>Frais de service (${Math.round(fee * 100)} %)</span><b>${fcfa(t.fee)} F</b></div>
+          <div class="row between" style="font-size:1.05rem"><span>Total</span><b>${fcfa(t.total)} F</b></div><div class="row between muted"><span>Vues estimées</span><span>${kfmt(t.reach)}</span></div>
+          ${budget && t.total > budget ? `<div class="notice warn small"><span>Dépasse le budget de ${fcfa(t.total - budget)} F.</span></div>` : budget ? `<div class="small muted">Reste sur le budget : ${fcfa(budget - t.total)} F</div>` : ""}</div>
+      </section>
+      <section class="card stack"><h3 style="margin:0">Plan de travail</h3>
+        ${(st.ai.plan || []).map((p, i) => `<div class="row" style="gap:8px;flex-wrap:wrap"><input type="date" data-pd="${i}" value="${esc(p.date || "")}" style="max-width:160px"><input data-pe="${i}" value="${esc(p.etape)}" style="flex:3 1 260px"><input data-pq="${i}" value="${esc(p.qui || "")}" placeholder="Qui" style="flex:1 1 110px"><button type="button" class="btn btn-ghost btn-sm" data-prm="${i}">✕</button></div>`).join("")}
+        <button type="button" class="btn btn-ghost btn-sm" id="q-padd" style="align-self:flex-start">+ Ajouter une étape</button></section>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><label class="small">Valable jusqu'au<input type="date" id="q-valid" value="${esc(st.valid || new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10))}"></label>
+        <label class="small">Statut<select id="q-st">${[["draft", "Brouillon"], ["sent", "Envoyé"], ["accepted", "Accepté"], ["refused", "Refusé"]].map(([k, l]) => `<option value="${k}" ${k === st.status ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-primary" id="q-save">Enregistrer</button><button class="btn btn-ink" id="q-pdf">📄 Devis + plan (PDF)</button><button class="btn btn-ok" id="q-wa">Envoyer sur WhatsApp</button></div>`;
+    const o2 = cur();
+    out.querySelectorAll("[data-opt]").forEach((b) => b.onclick = () => { sync(); st.chosen = Number(b.dataset.opt); draw(); });
+    out.querySelectorAll("[data-price]").forEach((i) => i.onchange = () => { o2.items[i.dataset.price].price = Math.max(0, Number(i.value) || 0); sync(); draw(); });
+    out.querySelectorAll("[data-rm]").forEach((b) => b.onclick = () => { sync(); o2.items.splice(Number(b.dataset.rm), 1); draw(); });
+    out.querySelectorAll("[data-prm]").forEach((b) => b.onclick = () => { sync(); st.ai.plan.splice(Number(b.dataset.prm), 1); draw(); });
+    $("#q-padd").onclick = () => { sync(); st.ai.plan.push({ date: "", etape: "", qui: "" }); draw(); };
+    $("#q-add").onchange = async (e) => { const p = pkList.find((x) => x.id === e.target.value); if (!p) return; sync();
+      const { data: nn } = await sb.from("influencer_networks").select("network, followers, avg_views").eq("influencer_id", p.influencer_id);
+      const pn = p.networks?.length ? p.networks : p.network && p.network !== "multi" ? [p.network] : [];
+      o2.items.push({ influencer_id: p.influencer_id, influencer_name: p.influencers.display_name, certified: p.influencers.status === "certified", package_id: p.id, package_title: p.title, networks: pn,
+        price: p.on_request ? 0 : p.price, on_request: p.on_request, date: "", time: "", brief: "", reach: (nn || []).filter((n) => !pn.length || pn.includes(n.network)).reduce((s, n) => s + (Number(n.avg_views) || Math.round(n.followers * 0.2)), 0) });
+      draw(); };
+    $("#q-save").onclick = (e) => save(e.target);
+    $("#q-pdf").onclick = () => { sync(); quoteDoc(st, fee); };
+    $("#q-wa").onclick = () => { sync(); const t2 = qTotals(cur().items, fee); const tel = String(st.contact || "").replace(/\D/g, "");
+      const msg = `Bonjour ${st.brand_name},\n\nVoici notre proposition de campagne influenceurs StatuPub${st.number ? " (devis " + st.number + ")" : ""} :\n\n${cur().items.map((x) => `• ${x.influencer_name} · ${x.package_title}${x.date ? " · " + dLong(x.date) : ""} : ${fcfa(x.price)} F`).join("\n")}\n\nFrais de service : ${fcfa(t2.fee)} F\nTotal : ${fcfa(t2.total)} F CFA\nVues estimées : ${kfmt(t2.reach)}\n\nJe vous envoie le devis détaillé et le plan de travail en PDF. Le paiement est sécurisé : les créateurs sont payés après publication.`;
+      window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, "_blank", "noopener"); };
+  }
+  function sync() {
+    const o = cur(); if (!o) return;
+    const why = $("#q-why"); if (why) o.why = why.value;
+    out.querySelectorAll("[data-date]").forEach((i) => { o.items[i.dataset.date].date = i.value; });
+    out.querySelectorAll("[data-time]").forEach((i) => { o.items[i.dataset.time].time = i.value; });
+    out.querySelectorAll("[data-brief]").forEach((i) => { o.items[i.dataset.brief].brief = i.value; });
+    out.querySelectorAll("[data-pe]").forEach((i) => { const k = i.dataset.pe; st.ai.plan[k] = { date: out.querySelector(`[data-pd="${k}"]`).value, etape: i.value, qui: out.querySelector(`[data-pq="${k}"]`).value }; });
+    st.valid = $("#q-valid")?.value || st.valid; st.status = $("#q-st")?.value || st.status;
+  }
+  async function save(btn) {
+    readForm(); sync(); if (!st.brand_name) return toast("Indique le nom de la marque", true);
+    const o = cur(); const t = qTotals(o.items, fee); st.ai.plan = st.ai.plan.filter((p) => p.etape.trim());
+    const row = { brand_id: st.brand_id, brand_name: st.brand_name, contact: st.contact || null, request: { ...st.req, summary: st.ai.summary, questions: st.ai.questions },
+      options: st.ai.options, chosen: st.chosen, items: o.items, plan: st.ai.plan, ...t, status: st.status, valid_until: st.valid || null, updated_at: new Date().toISOString() };
+    busy(btn, true);
+    try { const r = st.id ? await sb.from("influence_quotes").update(row).eq("id", st.id).select().single() : await sb.from("influence_quotes").insert(row).select().single();
+      if (r.error) throw r.error; st.id = r.data.id; st.number = r.data.number; toast("Devis " + st.number + " enregistré"); }
+    catch (e) { toast(errMsg(e), true); }
+    busy(btn, false);
+  }
+  draw();
+}
+
+function quoteDoc(st, fee) {
+  const o = st.ai.options[st.chosen]; const t = qTotals(o.items, fee);
+  const w = window.open("", "_blank"); if (!w) return toast("Autorise les fenêtres pour ouvrir le devis", true);
+  const today = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+  const plan = [...(st.ai.plan || [])].filter((p) => p.etape).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  w.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Devis ${esc(st.number || "")} · ${esc(st.brand_name)}</title>
+  <style>@page{size:A4;margin:16mm}body{font:14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;color:#10201D;max-width:820px;margin:20px auto;padding:0 16px}
+  .hd{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:3px solid #E8A33D;padding-bottom:14px}.logo{font-weight:800;font-size:26px;color:#0E3B36}.logo span{color:#E8A33D}
+  h1{font-size:22px;margin:0}h2{font-size:16px;color:#0E3B36;margin:24px 0 8px}table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid #E3E0D8;padding:8px;text-align:left;vertical-align:top}th{background:#F6F4EF;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  .r{text-align:right}.muted{color:#55625F;font-size:12px}.tot{width:380px;max-width:100%;margin-left:auto}.tot .r{white-space:nowrap}.tot td{border:0;padding:4px 8px}.tot .g td{font-size:17px;font-weight:800;border-top:2px solid #0E3B36}
+  .box{background:#F6F4EF;border-radius:10px;padding:12px 14px}.tl{border-left:3px solid #E8A33D;margin-left:6px;padding-left:16px}.tl div{margin:0 0 10px}.tl b{color:#0E3B36}
+  .brief{border:1px solid #E3E0D8;border-radius:10px;padding:10px 12px;margin-bottom:10px;break-inside:avoid;white-space:pre-wrap}button{margin:0 0 16px;padding:10px 16px;border:0;border-radius:10px;background:#0E3B36;color:#fff;font-weight:700;cursor:pointer}
+  @media print{button{display:none}body{margin:0}}</style></head><body>
+  <button onclick="print()">Imprimer / enregistrer en PDF</button>
+  <div class="hd"><div><div class="logo">Statu<span>Pub</span></div><div class="muted">Espace Pub Influenceur · West Africa SN Production · statupub.com</div></div>
+    <div style="text-align:right"><h1>DEVIS ${esc(st.number || "(brouillon)")}</h1><div class="muted">Émis le ${today}<br>Valable jusqu'au ${st.valid ? new Date(st.valid + "T12:00:00").toLocaleDateString("fr-FR") : "—"}</div></div></div>
+  <p><b>Client :</b> ${esc(st.brand_name)}${st.contact ? " · " + esc(st.contact) : ""}</p>
+  ${st.ai.summary ? `<div class="box"><b>Votre besoin</b><br>${esc(st.ai.summary)}</div>` : ""}
+  <h2>Proposition : ${esc(o.name)}</h2>${o.why ? `<p>${esc(o.why)}</p>` : ""}
+  <table><thead><tr><th>Créateur</th><th>Prestation</th><th>Publication</th><th class="r">Vues est.</th><th class="r">Prix</th></tr></thead><tbody>
+  ${o.items.map((x) => `<tr><td><b>${esc(x.influencer_name)}</b>${x.certified ? " ✓" : ""}</td><td>${esc(x.package_title)}<div class="muted">${esc((x.networks || []).map((n) => INF_NETS[n] || n).join(", "))}</div></td><td>${esc(dLong(x.date))}${x.time ? " · " + esc(x.time) : ""}</td><td class="r">${kfmt(x.reach)}</td><td class="r">${fcfa(x.price)} F</td></tr>`).join("")}
+  </tbody></table>
+  <table class="tot"><tr><td>Prix des créateurs</td><td class="r">${fcfa(t.subtotal)} F</td></tr><tr><td>Frais de service StatuPub (${Math.round(fee * 100)} %)</td><td class="r">${fcfa(t.fee)} F</td></tr><tr class="g"><td>Total</td><td class="r">${fcfa(t.total)} F CFA</td></tr><tr><td class="muted">Vues estimées</td><td class="r muted">${kfmt(t.reach)}</td></tr></table>
+  <p class="muted">Les vues sont une estimation basée sur les vues moyennes récentes des créateurs, pas une garantie. Paiement sécurisé par StatuPub : l'argent est bloqué pendant la campagne et les créateurs sont payés après la publication vérifiée.</p>
+  ${plan.length ? `<h2>Plan de travail</h2><div class="tl">${plan.map((p) => `<div><b>${esc(p.date ? dLong(p.date) : "")}</b>${p.qui ? ` · <span class="muted">${esc(p.qui)}</span>` : ""}<br>${esc(p.etape)}</div>`).join("")}</div>` : ""}
+  <h2>Conditions</h2><table>${INF_RULES().filter(([k]) => k !== "Commission" && k !== "Paiement du créateur").map(([k, v]) => `<tr><th style="width:32%">${esc(k)}</th><td>${esc(v)}</td></tr>`).join("")}</table>
+  ${o.items.some((x) => x.brief) ? `<h2>Annexe : briefs par créateur</h2>${o.items.filter((x) => x.brief).map((x) => `<div class="brief"><b>${esc(x.influencer_name)} · ${esc(x.package_title)}</b>\n${esc(x.brief)}</div>`).join("")}` : ""}
+  <p class="muted" style="margin-top:24px">Bon pour accord (date, nom, cachet) :</p><div style="height:70px;border:1px dashed #C9C4B8;border-radius:10px"></div>
+  </body></html>`);
+  w.document.close();
 }
