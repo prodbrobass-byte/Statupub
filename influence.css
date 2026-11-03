@@ -61,3 +61,4 @@
 .inf-tile-txt b{font-size:1.02rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .inf-tile-txt small{color:var(--saffron);font-size:.8rem}
 @media (max-width:600px){.inf-tile{width:160px}}
+@media (max-width:720px){.qp-aside{order:-1}}

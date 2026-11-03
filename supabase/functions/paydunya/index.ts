@@ -57,8 +57,9 @@ async function confirmRecharge(token: string) {
   const r = await fetch(`${CHECKOUT_API}/checkout-invoice/confirm/${encodeURIComponent(token)}`, { headers: pdHeaders() });
   const d = await r.json().catch(() => ({}));
   const { data: rc } = await db.from("recharges").select("*").eq("paydunya_token", token).maybeSingle();
-  if (!rc) return { ok: false, reason: "recharge inconnue" };
-  if (rc.status !== "en_attente") return { ok: rc.status === "validee", reason: rc.status };
+  const qtok = /^[a-f0-9]{16,64}$/.test(String(d?.custom_data?.quote_token ?? "")) ? String(d.custom_data.quote_token) : "";
+  if (!rc) return { ok: false, reason: "recharge inconnue", quote: qtok };
+  if (rc.status !== "en_attente") return { ok: rc.status === "validee", reason: rc.status, quote: qtok };
   const status = String(d?.status ?? "").toLowerCase();
   const amount = Number(d?.invoice?.total_amount ?? 0);
   if (status === "completed" && amount === rc.amount && String(d?.custom_data?.recharge_id ?? rc.id) === rc.id) {
@@ -67,14 +68,19 @@ async function confirmRecharge(token: string) {
       admin_note: `Payé via PayDunya${d?.customer?.payment_method ? " (" + d.customer.payment_method + ")" : ""}`,
       paid_with: d?.customer?.payment_method ?? null,
     }).eq("id", rc.id).eq("status", "en_attente");
-    return { ok: true };
+    // Paiement d'un devis influenceur : on accepte le devis (réservations créées) dès que l'argent est là
+    if (qtok) {
+      const { error: qe } = await db.rpc("inf_quote_accept_as", { p_token: qtok, p_uid: rc.annonceur_id });
+      if (qe) console.error("devis", qtok, qe.message);
+    }
+    return { ok: true, quote: qtok };
   }
   if (status === "cancelled" || status === "failed") {
     await db.from("recharges").update({ status: "rejetee", processed_at: new Date().toISOString(), admin_note: `PayDunya : ${status === "cancelled" ? "paiement annulé" : "paiement échoué"}` })
       .eq("id", rc.id).eq("status", "en_attente");
-    return { ok: false, reason: status };
+    return { ok: false, reason: status, quote: qtok };
   }
-  return { ok: false, reason: status || "en attente" };
+  return { ok: false, reason: status || "en attente", quote: qtok };
 }
 
 async function checkout(req: Request) {
@@ -83,6 +89,7 @@ async function checkout(req: Request) {
   if (!MASTER || !PRIVATE || !TOKEN) return json({ error: "Le paiement PayDunya n'est pas encore configuré" }, 503);
   const body = await req.json().catch(() => ({}));
   const amount = Math.round(Number(body.amount));
+  const quote = /^[a-f0-9]{16,64}$/.test(String(body.quote ?? "")) ? String(body.quote) : "";
   if (!(amount >= 1000 && amount <= 5000000)) return json({ error: "Montant entre 1 000 et 5 000 000 FCFA" }, 400);
   const { count } = await db.from("recharges").select("id", { count: "exact", head: true })
     .eq("annonceur_id", me.id).eq("status", "en_attente").gte("created_at", new Date(Date.now() - 3600e3).toISOString());
@@ -96,10 +103,10 @@ async function checkout(req: Request) {
   const r = await fetch(`${CHECKOUT_API}/checkout-invoice/create`, {
     method: "POST", headers: pdHeaders(),
     body: JSON.stringify({
-      invoice: { total_amount: amount, description: `Recharge du compte annonceur StatuPub (${amount} FCFA)` },
+      invoice: { total_amount: amount, description: quote ? `Paiement du devis influenceurs StatuPub (${amount} FCFA)` : `Recharge du compte annonceur StatuPub (${amount} FCFA)` },
       store: { name: "StatuPub", tagline: "Pub sur les statuts WhatsApp", website_url: SITE, logo_url: `${SITE}/logo/statupub-icone-1024.png` },
       actions: { cancel_url: `${FN}/return?cancel=1`, return_url: `${FN}/return`, callback_url: `${FN}/ipn` },
-      custom_data: { recharge_id: rc.id },
+      custom_data: quote ? { recharge_id: rc.id, quote_token: quote } : { recharge_id: rc.id },
     }),
   });
   const d = await r.json().catch(() => ({}));
@@ -113,11 +120,12 @@ async function checkout(req: Request) {
 
 async function onReturn(url: URL) {
   const token = url.searchParams.get("token") ?? "";
-  let state = url.searchParams.get("cancel") ? "annule" : "attente";
+  let state = url.searchParams.get("cancel") ? "annule" : "attente"; let q = "";
   if (/^[A-Za-z0-9_-]{6,80}$/.test(token)) {
-    const res = await confirmRecharge(token);
+    const res = await confirmRecharge(token); q = res.quote || "";
     if (res.ok) state = "ok"; else if (res.reason === "cancelled" || res.reason === "rejetee") state = "annule";
   }
+  if (q) return Response.redirect(`${SITE}/#/devis/${q}?paiement=${state}`, 302);
   return Response.redirect(`${SITE}/#/annonceur?paiement=${state}`, 302);
 }
 

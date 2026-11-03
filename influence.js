@@ -1025,7 +1025,7 @@ async function adminQuotes(box, ov) {
 
 async function quoteEditor(box, ov, q) {
   const fee = fees().b;
-  const st = { id: q?.id || null, number: q?.number || "", status: q?.status || "draft", req: { ...(q?.request || {}) }, brand_id: q?.brand_id || null, brand_name: q?.brand_name || "", contact: q?.contact || "",
+  const st = { token: q?.token || "", id: q?.id || null, number: q?.number || "", status: q?.status || "draft", req: { ...(q?.request || {}) }, brand_id: q?.brand_id || null, brand_name: q?.brand_name || "", contact: q?.contact || "",
     ai: q ? { summary: q.request?.summary || "", questions: q.request?.questions || [], options: q.options || [], plan: q.plan || [] } : null, chosen: q?.chosen || 0, valid: q?.valid_until || "" };
   if (st.ai && st.ai.options[st.chosen]) st.ai.options[st.chosen].items = q.items || st.ai.options[st.chosen].items;
   const nets = [...(st.req.networks || [])];
@@ -1082,7 +1082,8 @@ async function quoteEditor(box, ov, q) {
         <button type="button" class="btn btn-ghost btn-sm" id="q-padd" style="align-self:flex-start">+ Ajouter une étape</button></section>
       <div class="row" style="gap:8px;flex-wrap:wrap"><label class="small">Valable jusqu'au<input type="date" id="q-valid" value="${esc(st.valid || new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10))}"></label>
         <label class="small">Statut<select id="q-st">${[["draft", "Brouillon"], ["sent", "Envoyé"], ["accepted", "Accepté"], ["refused", "Refusé"]].map(([k, l]) => `<option value="${k}" ${k === st.status ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>
-      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-primary" id="q-save">Enregistrer</button><button class="btn btn-ink" id="q-pdf">📄 Devis + plan (PDF)</button><button class="btn btn-ok" id="q-wa">Envoyer sur WhatsApp</button></div>`;
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-primary" id="q-save">Enregistrer</button><button class="btn btn-ink" id="q-pdf">📄 Devis + plan (PDF)</button><button class="btn btn-ghost" id="q-link">🔗 Copier le lien du devis</button><button class="btn btn-ok" id="q-wa">Envoyer sur WhatsApp</button></div>
+      <p class="small muted" style="margin:0">La marque ouvre le lien, accepte et paie en ligne : les réservations sont créées toutes seules au prix du devis.</p>`;
     const o2 = cur();
     out.querySelectorAll("[data-opt]").forEach((b) => b.onclick = () => { sync(); st.chosen = Number(b.dataset.opt); draw(); });
     out.querySelectorAll("[data-price]").forEach((i) => i.onchange = () => { o2.items[i.dataset.price].price = Math.max(0, Number(i.value) || 0); sync(); draw(); });
@@ -1100,8 +1101,9 @@ async function quoteEditor(box, ov, q) {
       if (miss.length) { toast(`Fixe le prix de : ${miss.map((x) => x.influencer_name).join(", ")} (formule sur demande)`, true); return false; }
       if (!cur().items.length) { toast("Ajoute au moins un créateur", true); return false; } return true; };
     $("#q-pdf").onclick = async (e) => { if (!ready()) return; const w = window.open("", "_blank"); if (!(await save(e.target))) { w?.close(); return; } quoteDoc(st, fee, w); };
-    $("#q-wa").onclick = async (e) => { if (!ready()) return; if (!(await save(e.target))) return; const t2 = qTotals(cur().items, fee); const tel = String(st.contact || "").replace(/\D/g, "");
-      const msg = `Bonjour ${st.brand_name},\n\nVoici notre proposition de campagne influenceurs StatuPub${st.number ? " (devis " + st.number + ")" : ""} :\n\n${cur().items.map((x) => `• ${x.influencer_name} · ${x.package_title}${x.date ? " · " + dLong(x.date) : ""} : ${fcfa(x.price)} F`).join("\n")}\n\nFrais de service : ${fcfa(t2.fee)} F\nTotal : ${fcfa(t2.total)} F CFA\nVues estimées : ${kfmt(t2.reach)}\n\nJe vous envoie le devis détaillé et le plan de travail en PDF. Le paiement est sécurisé : les créateurs sont payés après publication.`;
+    $("#q-link").onclick = async (e) => { if (!ready()) return; if (!(await save(e.target))) return; if (st.status === "draft") { st.status = "sent"; $("#q-st").value = "sent"; await save(e.target); } copy(`https://statupub.com/devis/?t=${st.token}`); };
+    $("#q-wa").onclick = async (e) => { if (!ready()) return; if (st.status === "draft") { st.status = "sent"; const sel = $("#q-st"); if (sel) sel.value = "sent"; } if (!(await save(e.target))) return; const t2 = qTotals(cur().items, fee); const tel = String(st.contact || "").replace(/\D/g, "");
+      const msg = `Bonjour ${st.brand_name},\n\nVoici notre proposition de campagne influenceurs StatuPub${st.number ? " (devis " + st.number + ")" : ""} :\n\n${cur().items.map((x) => `• ${x.influencer_name} · ${x.package_title}${x.date ? " · " + dLong(x.date) : ""} : ${fcfa(x.price)} F`).join("\n")}\n\nFrais de service : ${fcfa(t2.fee)} F\nTotal : ${fcfa(t2.total)} F CFA\nVues estimées : ${kfmt(t2.reach)}\n\nVoir le devis, l'accepter et payer en ligne (Wave, Orange Money, carte) :\nhttps://statupub.com/devis/?t=${st.token}\n\nLe paiement est sécurisé : les créateurs sont payés seulement après la publication vérifiée.`;
       window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, "_blank", "noopener"); };
   }
   function sync() {
@@ -1120,7 +1122,7 @@ async function quoteEditor(box, ov, q) {
       options: st.ai.options, chosen: st.chosen, items: o.items, plan: st.ai.plan, ...t, status: st.status, valid_until: st.valid || null, updated_at: new Date().toISOString() };
     busy(btn, true);
     try { const r = st.id ? await sb.from("influence_quotes").update(row).eq("id", st.id).select().single() : await sb.from("influence_quotes").insert(row).select().single();
-      if (r.error) throw r.error; st.id = r.data.id; st.number = r.data.number; toast("Devis " + st.number + " enregistré");
+      if (r.error) throw r.error; st.id = r.data.id; st.number = r.data.number; st.token = r.data.token; toast("Devis " + st.number + " enregistré");
       const h2 = box.querySelector("h2"); if (h2) h2.textContent = "Devis " + st.number; busy(btn, false); return true; }
     catch (e) { toast(errMsg(e), true); }
     busy(btn, false); return false;
@@ -1160,4 +1162,80 @@ function quoteDoc(st, fee, win) {
   <p class="muted" style="margin-top:24px">Bon pour accord (date, nom, cachet) :</p><div style="height:70px;border:1px dashed #C9C4B8;border-radius:10px"></div>
   </td></tr></tbody></table></body></html>`);
   w.document.close();
+}
+
+/* ==================== Devis en ligne (marque) ==================== */
+async function viewQuotePublic(token, q) {
+  token = String(token || "").toLowerCase().replace(/[^a-f0-9]/g, "");
+  app.innerHTML = `<div class="spinner"></div>`;
+  const d = await rpc("inf_quote_public", { p_token: token });
+  if (!d) { app.innerHTML = `<main class="wrap"><div class="empty">Ce devis n'existe pas. Vérifiez le lien reçu ou contactez StatuPub.</div></main>`; return; }
+  try { localStorage.setItem("sp_quote", token); } catch {}
+  const pay = new URLSearchParams(q || "").get("paiement");
+  const me = state.profile; const isBrand = me?.role === "annonceur";
+  const wallet = isBrand ? await rpc("annonceur_wallet").then((r) => r[0]).catch(() => null) : null;
+  const av = Number(wallet?.available) || 0, missing = Math.max(0, d.total - av);
+  const accepted = d.status === "accepted";
+  if (accepted) { try { localStorage.removeItem("sp_quote"); } catch {} }
+  const plan = [...(d.plan || [])].filter((p) => p.etape).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  app.innerHTML = `<div class="inf-pro"><section class="inf-hero" style="padding-bottom:96px"><div class="wrap stack" style="gap:12px">
+      <span class="inf-kicker">Devis ${esc(d.number)} · Espace Pub Influenceur</span>
+      <h1>Votre campagne influenceurs, ${esc(d.brand_name)}</h1>
+      <p>${d.summary ? esc(d.summary) : "Voici la proposition préparée par l'équipe StatuPub."}</p></div></section>
+    <main class="wrap" style="margin-top:-64px;padding-bottom:48px"><div class="inf-layout" style="margin-top:0">
+      <div class="inf-main">
+        <section class="card stack"><div class="row between" style="flex-wrap:wrap"><h2 style="margin:0">${esc(d.option?.name || "Notre proposition")}</h2><span class="small muted">Valable jusqu'au ${new Date(d.valid_until + "T12:00:00").toLocaleDateString("fr-FR")}</span></div>
+          ${d.option?.why ? `<p style="margin:0;line-height:1.6">${esc(d.option.why)}</p>` : ""}
+          ${d.items.map((x) => `<div class="inf-req">${infAva(x.avatar, x.influencer_name)}<div style="flex:1;min-width:200px"><b>${x.slug ? `<a href="#/influence/${esc(x.slug)}">${esc(x.influencer_name)}</a>` : esc(x.influencer_name)}</b>${x.certified ? ` <span class="inf-badge" style="font-size:.7rem;padding:3px 8px">✓ Certifié</span>` : ""}
+              <div class="small muted">${esc(x.package_title)} · ${esc((x.networks || []).map((n) => INF_NETS[n] || n).join(", "))} · ${esc(dLong(x.date))}${x.time ? " · " + esc(x.time) : ""}</div>
+              ${x.brief ? `<details class="small" style="margin-top:4px"><summary>Idée de la vidéo</summary><p style="white-space:pre-wrap;margin:6px 0 0">${esc(x.brief)}</p></details>` : ""}</div>
+            <div style="text-align:right"><span class="inf-price">${fcfa(x.price)} F</span><div class="small muted">${kfmt(x.reach)} vues est.</div></div></div>`).join("")}
+        </section>
+        ${plan.length ? `<section class="card stack"><h2 style="margin:0">Le déroulé</h2><div style="border-left:3px solid var(--saffron);padding-left:16px;margin-left:6px" class="stack">${plan.map((p) => `<div><b>${esc(p.date ? dLong(p.date) : "")}</b>${p.qui ? ` <span class="small muted">· ${esc(p.qui)}</span>` : ""}<div>${esc(p.etape)}</div></div>`).join("")}</div></section>` : ""}
+        <section class="card stack"><h2 style="margin:0">Vos garanties</h2><div class="table"><table><tbody>${INF_RULES().filter(([k]) => !["Commission", "Paiement du créateur"].includes(k)).map(([k, v]) => `<tr><th style="text-align:left;width:34%">${esc(k)}</th><td>${esc(v)}</td></tr>`).join("")}</tbody></table></div></section>
+      </div>
+      <aside class="inf-aside qp-aside"><div class="card stack" style="gap:12px" id="qp-box">
+        <div class="stack small" style="gap:4px"><div class="row between"><span>Prix des créateurs</span><b>${fcfa(d.subtotal)} F</b></div><div class="row between"><span>Frais de service (${Math.round(fees().b * 100)} %)</span><b>${fcfa(d.fee)} F</b></div>
+          <div class="row between" style="font-size:1.15rem"><span>Total</span><b>${fcfa(d.total)} F CFA</b></div><div class="row between muted"><span>Vues estimées</span><span>${kfmt(d.reach)}</span></div></div>
+        <div id="qp-act" class="stack" style="gap:10px"></div>
+        <p class="small muted" style="margin:0">Paiement sécurisé par StatuPub : votre argent est bloqué pendant la campagne, les créateurs sont payés seulement après la publication vérifiée. Créateur qui refuse = remboursement automatique.</p>
+      </div></aside></div></main></div>`;
+  const act = $("#qp-act");
+  if (accepted) { act.innerHTML = `<div class="notice ok"><span><b>Devis accepté ✓</b> Les créateurs ont reçu votre demande.</span></div>${d.mine ? `<a class="btn btn-primary" href="#/marque">Suivre ma campagne</a>` : ""}`; return; }
+  if (d.expired || ["refused", "expired"].includes(d.status)) { act.innerHTML = `<div class="notice warn"><span>Ce devis n'est plus valable. Contactez StatuPub pour une nouvelle proposition.</span></div>`; return; }
+  if (!me) {
+    try { sessionStorage.setItem("sp_after", location.hash.split("?")[0]); } catch {}
+    act.innerHTML = `<p class="small" style="margin:0">Pour accepter, créez votre compte marque en 1 minute (ou connectez-vous).</p>
+      <a class="btn btn-primary" href="#/inscription?role=annonceur">Créer mon compte et accepter</a><a class="btn btn-ghost" href="#/connexion">J'ai déjà un compte</a>`; return;
+  }
+  if (!isBrand) { act.innerHTML = `<div class="notice warn"><span>Vous êtes connecté avec un compte ${esc(me.role)}. Connectez-vous avec un compte marque (annonceur) pour accepter ce devis.</span></div>`; return; }
+  let termsOk = false; try { termsOk = sessionStorage.getItem("sp_qterms") === token; } catch {}
+  act.innerHTML = `<label class="row small" style="gap:8px;font-weight:500;align-items:flex-start"><input type="checkbox" id="qp-terms" style="width:auto;margin-top:3px" ${termsOk ? "checked" : ""}> J'accepte ce devis et les <a href="#/conditions-influence" target="_blank">conditions de l'Espace Pub Influenceur</a></label>
+    ${av > 0 ? `<div class="small muted">Votre solde StatuPub : ${fcfa(av)} F${missing ? ` · reste à payer : <b>${fcfa(missing)} F</b>` : " (suffisant)"}</div>` : ""}
+    <button class="btn btn-primary" id="qp-go">${missing ? `Accepter et payer ${fcfa(Math.max(missing, 1000))} F` : "Accepter le devis"}</button>
+    <div class="small muted" style="text-align:center">Wave · Orange Money · Free Money · carte bancaire</div>`;
+  const accept = async (btn) => {
+    busy(btn, true);
+    try { await rpc("inf_quote_accept", { p_token: token, p_accept_terms: true }); try { sessionStorage.removeItem("sp_qterms"); localStorage.removeItem("sp_quote"); } catch {}
+      toast("Devis accepté ! Les créateurs ont reçu votre demande."); location.hash = "#/marque"; return true; }
+    catch (e) { const m = String(e?.message || ""); if (/^SOLDE:/.test(m)) { busy(btn, false); return false; } toast(errMsg(e), true); busy(btn, false); return null; }
+  };
+  $("#qp-go").onclick = async (e) => {
+    const btn = e.currentTarget;
+    if (!$("#qp-terms").checked) return toast("Cochez la case pour accepter le devis et les conditions", true);
+    try { sessionStorage.setItem("sp_qterms", token); } catch {}
+    if (!missing) { const r = await accept(btn); if (r === false) toast("Solde insuffisant, actualisez la page.", true); return; }
+    busy(btn, true);
+    try { const r = await payApi("checkout", { amount: Math.max(missing, 1000), quote: token }); location.href = r.url; }
+    catch (err) { toast(errMsg(err), true); busy(btn, false); }
+  };
+  if (pay === "ok") {
+    history.replaceState(null, "", location.pathname + "#/devis/" + token);
+    toast("Paiement reçu, validation du devis…");
+    // le serveur accepte normalement le devis tout seul après le paiement ; on vérifie et on complète si besoin
+    setTimeout(async () => { const again = await rpc("inf_quote_public", { p_token: token }).catch(() => null);
+      if (again?.status === "accepted") { toast("Devis accepté ! Les créateurs ont reçu votre demande."); location.hash = "#/marque"; return; }
+      if (termsOk && !missing) accept($("#qp-go")); }, 1200);
+  } else if (pay === "annule") { history.replaceState(null, "", location.pathname + "#/devis/" + token); toast("Paiement annulé. Vous pouvez réessayer.", true); }
+  else if (pay) { history.replaceState(null, "", location.pathname + "#/devis/" + token); toast("Paiement en cours de confirmation : actualisez dans un instant."); }
 }
