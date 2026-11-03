@@ -41,6 +41,9 @@ fbq("init","1081784291417409");fbq("track","PageView");
 (function () {
   var q = new URLSearchParams(location.search);
   var n = (q.get("n") || "").replace(/\D/g, "");
+  // Réparation : indicatif ajouté deux fois (ex. 225 + 221 77 xxx xx xx)
+  var CC = /^(221|225|229|228|223|226|237)(221|225|229|228|223|226|237)(\d{8,9})$/;
+  if (n.length >= 14 && CC.test(n)) n = n.slice(3);
   var b = (q.get("b") || "").trim().slice(0, 80);
   var m = (q.get("m") || ("Bonjour" + (b ? " " + b : "") + ", je viens de votre pub. ")).slice(0, 300);
   if (b) { document.getElementById("name").textContent = b; document.getElementById("av").textContent = b.charAt(0).toUpperCase(); document.title = b + " · WhatsApp"; }
