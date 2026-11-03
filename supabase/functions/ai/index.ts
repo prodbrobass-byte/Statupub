@@ -106,11 +106,15 @@ ${JSON.stringify(catalog)}`;
   if (!key) throw new Error("La clé IA n'est pas encore configurée dans Supabase (ANTHROPIC_API_KEY).");
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST", headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-5-5", max_tokens: 6000, system: sys, tools: [tool], tool_choice: { type: "tool", name: "proposer_campagne" }, messages: [{ role: "user", content: user }] }),
+    body: JSON.stringify({ model: "claude-sonnet-5-5", max_tokens: 12000, system: sys, tools: [tool], tool_choice: { type: "auto" }, messages: [{ role: "user", content: user + "\n\nRéponds uniquement en appelant l'outil proposer_campagne." }] }),
   });
   const d = await r.json();
   if (!r.ok) { const m = d?.error?.message || "Erreur IA"; if (/credit|balance/i.test(m)) throw new Error("Crédits API épuisés : recharge ton compte sur console.anthropic.com."); throw new Error(m); }
-  const out = (d.content || []).find((c: any) => c.type === "tool_use")?.input;
+  let out = (d.content || []).find((c: any) => c.type === "tool_use")?.input;
+  if (!out) { // secours : JSON écrit en texte
+    const txt = (d.content || []).map((c: any) => c.text || "").join("");
+    const m = txt.match(/\{[\s\S]*\}/); if (m) { try { out = JSON.parse(m[0]); } catch { /* ignoré */ } }
+  }
   if (!out?.options?.length) throw new Error("L'IA n'a pas pu proposer de campagne. Précise le besoin et réessaie.");
   // Vérification et calcul des prix côté serveur (on ne fait jamais confiance aux chiffres de l'IA)
   const byInf = new Map(catalog.map((c: any) => [c.id, c]));
