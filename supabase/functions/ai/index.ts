@@ -74,7 +74,8 @@ async function infQuote(b: any) {
           type: "array", minItems: 1, maxItems: 3,
           items: { type: "object", required: ["nom", "strategie", "pourquoi", "lignes"], properties: {
             nom: { type: "string", description: "Ex. Visibilité, Équilibre, Proximité" },
-            strategie: { type: "string" }, pourquoi: { type: "string", description: "2 à 3 phrases pour la marque" },
+            strategie: { type: "string" }, pourquoi: { type: "string", description: "2 à 3 phrases commerciales qui seront imprimées sur le devis envoyé à la marque : pourquoi ce choix est bon pour elle. Jamais d'information interne." },
+            note_interne: { type: "string", description: "Remarques pour l'équipe StatuPub seulement (budget dépassé, catalogue limité, prix à confirmer…). Vide si rien." },
             lignes: { type: "array", minItems: 1, items: { type: "object", required: ["createur_id", "formule_id", "date", "brief"], properties: {
               createur_id: { type: "string" }, formule_id: { type: "string" }, date: { type: "string", description: "YYYY-MM-DD" },
               heure: { type: "string", description: "Heure conseillée, ex. 19:00" },
@@ -90,9 +91,11 @@ async function infQuote(b: any) {
 Règles strictes :
 - Utilise UNIQUEMENT les createur_id et formule_id du catalogue. Une formule appartient à son créateur. N'invente aucun chiffre ni créateur.
 - Choisis des créateurs dont les catégories, le pays, la langue et l'audience collent au produit et à la cible.
-- Respecte le budget : le total de chaque option (prix des formules + ${Math.round(fee * 100)} % de frais de service) ne doit pas dépasser le budget. Si le budget est trop petit, propose quand même la meilleure option possible et dis-le dans "pourquoi". Les formules "sur_demande" ne peuvent être choisies que si rien d'autre ne convient.
+- Respecte le budget : le total de chaque option (prix des formules + ${Math.round(fee * 100)} % de frais de service) ne doit pas dépasser le budget. Si le budget est trop petit, propose quand même la meilleure option possible et explique-le dans "note_interne". Les formules "sur_demande" ne peuvent être choisies que si rien d'autre ne convient.
 - Les dates de publication : au moins 4 jours après aujourd'hui (${today}), dans la période demandée, en évitant les dates_prises du créateur, et en décalant les créateurs d'une même option (pas tous le même jour, sauf demande).
 - Le plan suit les règles StatuPub : brief envoyé, ${s?.inf_accept_hours || 48} h pour que les créateurs acceptent, vidéos à valider par la marque (${s?.inf_validate_hours || 48} h), publication, vérification, rapport à J+7. Les publications restent en ligne 30 jours avec la mention #pub.
+- "pourquoi" est lu par la marque : ton commercial et positif, jamais de mention du nombre de créateurs du catalogue, des formules sur demande, d'un dépassement de budget ou de détails internes. Mets tout cela dans "note_interne".
+- Dans le plan, c'est le créateur qui envoie sa vidéo à la marque pour validation. Laisse au moins 1 jour entre la validation de la vidéo et la publication quand la période le permet.
 - Écris en français simple et professionnel, en vouvoyant la marque.`;
   const user = `Aujourd'hui : ${today}
 Besoin de la marque (${b.brand || "marque"}) : ${need}
@@ -128,7 +131,7 @@ ${JSON.stringify(catalog)}`;
       return { influencer_id: c.id, influencer_name: c.nom, certified: c.certifie, package_id: p.id, package_title: p.titre, networks: p.reseaux,
         price: p.prix_F || 0, on_request: !!p.sur_demande, date, time: l.heure || "", brief: String(l.brief || "").slice(0, 1200), reach };
     }).filter(Boolean);
-    return { name: o.nom, strategy: o.strategie, why: o.pourquoi, items: lignes };
+    return { name: o.nom, strategy: o.strategie, why: o.pourquoi, note: o.note_interne || "", items: lignes };
   }).filter((o: any) => o.items.length);
   if (!options.length) throw new Error("L'IA a proposé des créateurs inconnus. Réessaie.");
   return { summary: out.resume, questions: out.questions || [], options, plan: (out.plan || []).filter((x: any) => x?.etape), fee, model: "claude-sonnet-5-5" };

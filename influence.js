@@ -1059,6 +1059,7 @@ async function quoteEditor(box, ov, q) {
     const o = cur(); const t = qTotals(o.items, fee); const budget = Number(st.req.budget) || 0;
     out.innerHTML = `${st.ai.summary ? `<div class="notice info"><div><b>Besoin compris par l'IA</b><p class="small" style="margin:4px 0 0">${esc(st.ai.summary)}</p></div></div>` : ""}
       ${(st.ai.questions || []).length ? `<div class="notice warn"><div><b>À demander à la marque</b><ul class="small" style="margin:4px 0 0;padding-left:18px">${st.ai.questions.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div></div>` : ""}
+      ${cur().note ? `<div class="notice warn"><div><b>Note interne (pas sur le devis)</b><p class="small" style="margin:4px 0 0">${esc(cur().note)}</p></div></div>` : ""}
       <div class="inf-chips">${st.ai.options.map((x, i) => { const tt = qTotals(x.items, fee); return `<button type="button" class="inf-chip" data-opt="${i}" aria-pressed="${i === st.chosen}">${esc(x.name)} · ${fcfa(tt.total)} F</button>`; }).join("")}</div>
       <section class="card stack">
         <div><h3 style="margin:0">Option « ${esc(o.name)} »</h3>${o.strategy ? `<p class="small muted" style="margin:4px 0 0">${esc(o.strategy)}</p>` : ""}</div>
@@ -1133,14 +1134,16 @@ function quoteDoc(st, fee, win) {
   const today = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
   const plan = [...(st.ai.plan || [])].filter((p) => p.etape).sort((a, b) => String(a.date).localeCompare(String(b.date)));
   w.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Devis ${esc(st.number || "")} · ${esc(st.brand_name)}</title>
-  <style>@page{size:A4;margin:16mm}body{font:14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;color:#10201D;max-width:820px;margin:20px auto;padding:0 16px}
+  <style>@page{size:A4;margin:0}.pg{width:100%;border-collapse:collapse}.pg>thead td,.pg>tfoot td{height:0;padding:0;border:0}.pg>tbody>tr>td{padding:0;border:0}
+  @media print{.pg>thead td,.pg>tfoot td{height:14mm}body{padding:0 16mm!important}.noprint{display:none}}body{font:14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;color:#10201D;max-width:820px;margin:20px auto;padding:0 16px}
   .hd{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:3px solid #E8A33D;padding-bottom:14px}.logo{font-weight:800;font-size:26px;color:#0E3B36}.logo span{color:#E8A33D}
   h1{font-size:22px;margin:0}h2{font-size:16px;color:#0E3B36;margin:24px 0 8px}table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid #E3E0D8;padding:8px;text-align:left;vertical-align:top}th{background:#F6F4EF;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
   .r{text-align:right}.muted{color:#55625F;font-size:12px}.tot{width:380px;max-width:100%;margin-left:auto}.tot .r{white-space:nowrap}.tot td{border:0;padding:4px 8px}.tot .g td{font-size:17px;font-weight:800;border-top:2px solid #0E3B36}
   .box{background:#F6F4EF;border-radius:10px;padding:12px 14px}.tl{border-left:3px solid #E8A33D;margin-left:6px;padding-left:16px}.tl div{margin:0 0 10px}.tl b{color:#0E3B36}
   .brief{border:1px solid #E3E0D8;border-radius:10px;padding:10px 12px;margin-bottom:10px;break-inside:avoid;white-space:pre-wrap}button{margin:0 0 16px;padding:10px 16px;border:0;border-radius:10px;background:#0E3B36;color:#fff;font-weight:700;cursor:pointer}
   @media print{button{display:none}body{margin:0}}</style></head><body>
-  <button onclick="print()">Imprimer / enregistrer en PDF</button><span class="muted" style="margin-left:10px">Astuce : dans la fenêtre d'impression, décoche « En-têtes et pieds de page ».</span>
+  <div class="noprint"><button onclick="print()">Imprimer / enregistrer en PDF</button></div>
+  <table class="pg"><thead><tr><td></td></tr></thead><tfoot><tr><td></td></tr></tfoot><tbody><tr><td>
   <div class="hd"><div><div class="logo">Statu<span>Pub</span></div><div class="muted">Espace Pub Influenceur · West Africa SN Production · statupub.com</div></div>
     <div style="text-align:right"><h1>DEVIS ${esc(st.number || "(brouillon)")}</h1><div class="muted">Émis le ${today}<br>Valable jusqu'au ${st.valid ? new Date(st.valid + "T12:00:00").toLocaleDateString("fr-FR") : "—"}</div></div></div>
   <p><b>Client :</b> ${esc(st.brand_name)}${st.contact ? " · " + esc(st.contact) : ""}</p>
@@ -1155,6 +1158,6 @@ function quoteDoc(st, fee, win) {
   <h2>Conditions</h2><table>${INF_RULES().filter(([k]) => k !== "Commission" && k !== "Paiement du créateur").map(([k, v]) => `<tr><th style="width:32%">${esc(k)}</th><td>${esc(v)}</td></tr>`).join("")}</table>
   ${o.items.some((x) => x.brief) ? `<h2>Annexe : briefs par créateur</h2>${o.items.filter((x) => x.brief).map((x) => `<div class="brief"><b>${esc(x.influencer_name)} · ${esc(x.package_title)}</b>\n${esc(x.brief)}</div>`).join("")}` : ""}
   <p class="muted" style="margin-top:24px">Bon pour accord (date, nom, cachet) :</p><div style="height:70px;border:1px dashed #C9C4B8;border-radius:10px"></div>
-  </body></html>`);
+  </td></tr></tbody></table></body></html>`);
   w.document.close();
 }
