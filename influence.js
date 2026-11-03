@@ -768,7 +768,8 @@ async function adminInfluence(body, reload) {
           ${i.status !== "verified" ? `<button class="btn btn-ink btn-sm" data-st="verified" data-id="${i.id}">Vérifier</button>` : ""}
           ${i.status !== "certified" ? `<button class="btn btn-primary btn-sm" data-st="certified" data-id="${i.id}">Certifier</button>` : ""}
           ${i.status !== "hidden" ? `<button class="btn btn-ghost btn-sm" data-st="hidden" data-id="${i.id}">Masquer</button>` : ""}
-          ${i.status === "pending" ? `<button class="btn btn-bad btn-sm" data-st="rejected" data-id="${i.id}">Refuser</button>` : ""}</div></div>
+          ${i.status === "pending" ? `<button class="btn btn-bad btn-sm" data-st="rejected" data-id="${i.id}">Refuser</button>` : ""}
+          ${!i.user_id ? `<button class="btn btn-ghost btn-sm" data-del="${i.id}" data-nm="${esc(i.display_name)}" title="Supprimer ce profil">🗑 Supprimer</button>` : ""}</div></div>
         ${(i.networks || []).length ? `<div class="stack" style="gap:6px">${i.networks.map((n) => `<div class="row small" style="gap:10px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:6px">
           <span class="inf-net">${INF_NETS[n.network]}</span><span>${n.url ? `<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.handle || n.url)}</a>` : esc(n.handle || "")}</span><b>${kfmt(n.followers)}</b><span class="muted">${n.avg_views ? kfmt(n.avg_views) + " vues" : ""} ${n.engagement != null ? n.engagement + " %" : ""}</span>
           ${(n.proof_urls || []).map((u, k) => `<a href="${esc(u)}" target="_blank" rel="noopener">Capture ${k + 1}</a>`).join(" ")}
@@ -791,6 +792,7 @@ async function adminInfluence(body, reload) {
     }); };
     box.querySelectorAll("[data-code]").forEach((b) => b.onclick = async () => { try { const c = await rpc("inf_admin_new_code", { p_id: b.dataset.code }); inviteBox(c, b.dataset.nm); } catch (e) { toast(errMsg(e), true); } });
     box.querySelectorAll("[data-st]").forEach((b) => b.onclick = () => act(b, "inf_admin_set_status", { p_id: b.dataset.id, p_status: b.dataset.st }, "Statut mis à jour"));
+    box.querySelectorAll("[data-del]").forEach((b) => b.onclick = () => { if (!confirm(`Supprimer définitivement le profil « ${b.dataset.nm} » ? Ses réseaux et formules seront effacés.`)) return; act(b, "inf_admin_delete", { p_id: b.dataset.del }, "Profil supprimé"); });
     box.querySelectorAll("[data-net]").forEach((b) => b.onclick = () => act(b, "inf_admin_verify_network", { p_net: b.dataset.net, p_ok: b.dataset.ok === "1" }));
   }
 
