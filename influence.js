@@ -109,6 +109,8 @@ async function viewInfluence() {
       ${see ? `<label>Budget max (F)<input id="if-max" type="number" min="0" step="5000" placeholder="Ex. : 300000"></label>` : ""}
     </form>
     ${!see ? `<div class="notice info"><div><b>Les prix sont réservés aux marques inscrites.</b><p class="small muted">Créez votre compte entreprise gratuitement pour voir les tarifs et réserver, ou demandez un prix sur le profil d'un créateur.</p></div><a class="btn btn-ink btn-sm" href="#/inscription?role=annonceur">Créer mon compte marque</a></div>` : ""}
+    <section class="card row between" style="flex-wrap:wrap;gap:14px;border:2px solid var(--saffron)"><div style="flex:1;min-width:240px"><h2 style="margin:0">🤖 Pas le temps de chercher ?</h2><p class="muted" style="margin:4px 0 0">Décrivez votre besoin : l'IA choisit les créateurs, le prix et le plan de publication pour vous.</p></div>
+      <a class="btn btn-primary" href="${isBrandUser() ? "#/assistant" : "#/inscription?role=annonceur"}">Composer ma campagne avec l'IA</a></section>
     <div class="row between"><h2 style="margin:0" id="inf-count"></h2>${isBrandUser() ? `<a class="btn btn-ghost btn-sm" href="#/marque">Mes réservations</a>` : ""}</div>
     <div class="inf-grid" id="inf-grid"></div>
     <section class="stack" aria-labelledby="inf-how"><h2 id="inf-how">Comment ça marche</h2><div class="inf-steps">
@@ -140,7 +142,7 @@ async function viewInfluence() {
   $("#if-q").oninput = (e) => { f.q = e.target.value; draw(); };
   if ($("#if-max")) $("#if-max").oninput = (e) => { f.max = e.target.value; draw(); };
   $("#inf-f").onsubmit = (e) => e.preventDefault();
-  draw();
+  draw(); cartBadge();
 }
 
 /* ---------- Demande de prix (visiteur) ---------- */
@@ -204,7 +206,7 @@ async function viewInfProfile(slug) {
         </section>
         <section class="card stack"><h2 style="margin:0">Formules</h2>
           ${pk.length ? pk.map((x) => `<div class="inf-req"><div style="flex:1;min-width:200px"><b>${esc(x.title)}</b> ${pkNets(x)}${x.description ? `<p class="small muted" style="margin:4px 0 0">${esc(x.description)}</p>` : ""}</div>
-            ${x.on_request ? `<span class="small" style="font-weight:600">Prix sur demande</span>` : x.price != null ? `<span class="inf-price">${fcfa(x.price)} F</span>` : `<button class="btn btn-ghost btn-sm" data-ask="${esc(x.id)}">Demander le prix</button>`}</div>`).join("") : `<p class="muted">Ce créateur n'a pas encore publié de formules. Faites-lui une offre.</p>`}
+            ${x.on_request ? `<span class="small" style="font-weight:600">Prix sur demande</span>` : x.price != null ? `<span class="inf-price">${fcfa(x.price)} F</span>${isBrandUser() && p.accepting ? `<button class="btn btn-ghost btn-sm" data-cart="${esc(x.id)}">🛒 Ajouter</button>` : ""}` : `<button class="btn btn-ghost btn-sm" data-ask="${esc(x.id)}">Demander le prix</button>`}</div>`).join("") : `<p class="muted">Ce créateur n'a pas encore publié de formules. Faites-lui une offre.</p>`}
           ${!p.can_see_prices ? `<p class="small muted" style="margin:0">Les prix sont visibles par les marques inscrites. <a href="#/inscription?role=annonceur">Créer mon compte marque</a></p>` : ""}
         </section>
         <section class="card stack"><h2 style="margin:0">Avis des marques</h2>
@@ -214,6 +216,9 @@ async function viewInfProfile(slug) {
       <aside class="inf-aside"><div class="card stack" id="inf-book" style="gap:14px"></div></aside>
     </div></main></div>`;
   app.querySelectorAll("[data-ask]").forEach((b) => b.onclick = () => infPriceModal(p, pk.find((x) => x.id === b.dataset.ask)));
+  app.querySelectorAll("[data-cart]").forEach((b) => b.onclick = () => { const x = pk.find((y) => y.id === b.dataset.cart);
+    cartAdd({ package_id: x.id, influencer_id: p.id, influencer_name: p.name, title: x.title, price: x.price, networks: x.networks?.length ? x.networks : x.network && x.network !== "multi" ? [x.network] : [] }); });
+  cartBadge();
   const box = $("#inf-book");
   const dayStrip = `<div class="stack" style="gap:6px"><b class="small">Disponibilités (3 semaines)</b><div class="inf-days">${days.map((d) => { const k = d.toISOString().slice(0, 10); return `<span class="${busySet.has(k) ? "busy" : ""}" title="${busySet.has(k) ? "Déjà réservé" : "Libre"}">${d.getDate()}</span>`; }).join("")}</div></div>`;
   if (state.profile?.role === "createur" || state.profile?.role === "diffuseur") {
@@ -612,7 +617,7 @@ async function viewMarque() {
   app.innerHTML = `<main class="wrap">
     <div class="page-head"><div><p class="eyebrow">Espace marque · Pub Influenceur</p><h1 style="font-size:2rem;margin:0">${esc(brand.company)}</h1>
       <p class="muted small" style="margin:4px 0 0">${brand.verified_at ? "✓ Entreprise vérifiée" : "Vérification de l'entreprise en cours"}${brand.ninea ? " · NINEA " + esc(brand.ninea) : ""} · <button class="btn btn-ghost btn-sm" id="br-ed" style="padding:2px 8px">Modifier</button></p></div>
-      <div class="row"><a class="btn btn-ghost" href="#/messages">💬 Messages${unread ? ` (${unread})` : ""}</a><a class="btn btn-ghost" href="#/annonceur">Mes campagnes statuts</a><a class="btn btn-primary" href="#/influence">Trouver un créateur</a></div></div>
+      <div class="row"><a class="btn btn-ghost" href="#/messages">💬 Messages${unread ? ` (${unread})` : ""}</a><a class="btn btn-ghost" href="#/annonceur">Mes campagnes statuts</a><a class="btn btn-ghost" href="#/influence">Trouver un créateur</a><a class="btn btn-primary" href="#/assistant">🤖 Assistant campagne</a></div></div>
     ${!brand.terms_accepted_at ? `<div class="notice warn" style="margin-bottom:16px"><div><b>Acceptez les conditions de l'Espace Pub Influenceur</b><p class="small muted">Obligatoire avant votre première réservation.</p></div><button class="btn btn-ink btn-sm" id="br-terms">Lire et accepter</button></div>` : ""}
     <div class="grid g4" style="margin-bottom:20px">
       <div class="card kpi"><span class="eyebrow">Campagnes en cours</span><span class="num">${running.length}</span></div>
@@ -621,6 +626,7 @@ async function viewMarque() {
       <div class="card kpi"><span class="eyebrow">Solde disponible</span><div>${money(w?.available || 0)}</div><button class="btn btn-ghost btn-sm" id="br-rc">Recharger</button></div>
     </div>
     <div id="br-check" class="stack"></div>
+    <section id="br-quotes" class="stack" style="margin-top:20px"></section>
     <section class="stack" style="margin-top:20px"><h2>Mes réservations</h2>
       ${bk.length ? `<div class="table"><table><thead><tr><th>Créateur</th><th>Formule</th><th>Date</th><th>Statut</th><th>Total</th><th></th></tr></thead><tbody>
       ${bk.map((x) => `<tr><td><a href="#/influence/${esc(x.influencer_slug)}"><b>${esc(x.influencer_name)}</b></a></td><td>${esc(x.package_title)}</td><td>${x.publish_date ? new Date(x.publish_date).toLocaleDateString("fr-FR") : "—"}</td>
@@ -628,11 +634,16 @@ async function viewMarque() {
         <td class="row" style="gap:6px;flex-wrap:nowrap">${x.post_url ? `<a class="btn btn-ghost btn-sm" href="${esc(x.post_url)}" target="_blank" rel="noopener">Voir le post</a>` : ""}
           ${["awaiting_creator", "accepted"].includes(x.status) ? `<button class="btn btn-ghost btn-sm" data-cancel="${x.id}" data-st="${x.status}">Annuler</button>` : ""}
           ${["verified", "paid_out"].includes(x.status) && !x.reviewed ? `<button class="btn btn-primary btn-sm" data-rev="${x.id}">Laisser un avis</button>` : ""}
+          ${x.report_text || Object.keys(x.results || {}).length ? `<button class="btn btn-primary btn-sm" data-rep="${x.id}">📊 Rapport</button>` : ""}
           <a class="btn btn-ghost btn-sm" href="#/messages/${x.id}">💬${x.unread ? " " + x.unread : ""}</a><button class="btn btn-ghost btn-sm" data-det="${x.id}">Détails</button></td></tr>`).join("")}</tbody></table></div>`
         : `<div class="empty">Aucune réservation pour l'instant. <a href="#/influence">Découvrir les créateurs</a></div>`}
     </section>
     <p class="small muted" style="margin-top:16px">Annulation gratuite avant l'acceptation du créateur, 50 % remboursés après, rien après la livraison de la vidéo.</p></main>`;
   $("#br-ed").onclick = () => brandForm(brand);
+  app.querySelectorAll("[data-rep]").forEach((b) => b.onclick = () => infReportDoc(bk.find((y) => y.id === b.dataset.rep)));
+  sb.from("influence_quotes").select("number, token, status, total, created_at, valid_until").eq("brand_id", uid).in("status", ["sent", "accepted"]).order("created_at", { ascending: false }).limit(10).then(({ data }) => {
+    const box = $("#br-quotes"); if (!box || !(data || []).length) return;
+    box.innerHTML = `<h2>Mes devis</h2><div class="table"><table><tbody>${data.map((q) => `<tr><td><b>${esc(q.number)}</b><div class="small muted">${dateTimeFr(q.created_at)}</div></td><td>${money(q.total)}</td><td>${q.status === "accepted" ? "Accepté ✓" : "À accepter"}</td><td><a class="btn btn-${q.status === "accepted" ? "ghost" : "primary"} btn-sm" href="#/devis/${q.token}">${q.status === "accepted" ? "Voir" : "Voir et payer"}</a></td></tr>`).join("")}</tbody></table></div>`; });
   $("#br-terms")?.addEventListener("click", () => infTermsModal("brand", viewMarque));
   $("#br-rc").onclick = rechargeModal;
   const chk = $("#br-check");
@@ -791,11 +802,13 @@ async function adminInfluence(body, reload) {
       ${x.post_url ? `<a class="btn btn-ghost btn-sm" href="${esc(x.post_url)}" target="_blank" rel="noopener">Post</a>` : ""}
       ${x.status === "published" ? `<button class="btn btn-ok btn-sm" data-vp="${x.id}" data-ok="1">Publication OK</button><button class="btn btn-bad btn-sm" data-vp="${x.id}" data-ok="0">Litige</button>` : ""}
       ${x.status === "verified" ? (canPay ? `<button class="btn btn-primary btn-sm" data-pay="${x.id}" data-amt="${x.price - x.creator_fee}">Payer</button>` : `<span class="small muted">Payable le ${dateTimeFr(due)}</span>`) : ""}
-      ${x.status === "disputed" ? `<button class="btn btn-ink btn-sm" data-res="${x.id}">Trancher</button>` : ""}</td></tr>`; };
+      ${x.status === "disputed" ? `<button class="btn btn-ink btn-sm" data-res="${x.id}">Trancher</button>` : ""}
+      ${["published", "verified", "paid_out"].includes(x.status) ? `<button class="btn btn-ghost btn-sm" data-rs="${x.id}">📊 ${x.report_text ? "Rapport ✓" : "Résultats"}</button>` : ""}</td></tr>`; };
     const pri = { published: 0, disputed: 1, verified: 2 };
     const list = [...ov.bookings].sort((a, b) => (pri[a.status] ?? 9) - (pri[b.status] ?? 9));
     box.innerHTML = list.length ? `<div class="table"><table><thead><tr><th>Créateur / marque</th><th>Formule</th><th>Statut</th><th>Montant</th><th></th></tr></thead><tbody>${list.map(row).join("")}</tbody></table></div>` : `<div class="empty">Aucune réservation.</div>`;
     box.querySelectorAll("[data-vp]").forEach((b) => b.onclick = () => { const ok = b.dataset.ok === "1"; const note = ok ? null : prompt("Motif du litige (ex. : #pub absent, post supprimé) :"); if (!ok && !note) return; act(b, "inf_admin_verify_post", { p_id: b.dataset.vp, p_ok: ok, p_note: note }, ok ? "Publication vérifiée" : "Litige ouvert"); });
+    box.querySelectorAll("[data-rs]").forEach((b) => b.onclick = () => infResultsModal(ov.bookings.find((y) => y.id === b.dataset.rs), reload));
     box.querySelectorAll("[data-pay]").forEach((b) => b.onclick = () => { const ref = prompt(`Référence du paiement de ${fcfa(b.dataset.amt)} F (Wave / OM) :`); if (ref) act(b, "inf_admin_payout", { p_id: b.dataset.pay, p_ref: ref }, "Paiement enregistré"); });
     box.querySelectorAll("[data-res]").forEach((b) => b.onclick = () => { const x = ov.bookings.find((y) => y.id === b.dataset.res);
       openModal(`<h2 style="margin:0">Trancher le litige</h2><p class="small muted" style="margin:0">${esc(x.influencer_name)} / ${esc(x.brand_company || "")} · total ${fcfa(x.total)} F</p>
@@ -1016,7 +1029,7 @@ async function adminQuotes(box, ov) {
   const { data: list } = await sb.from("influence_quotes").select("*").order("created_at", { ascending: false }).limit(60);
   const ST = { draft: "Brouillon", sent: "Envoyé", accepted: "Accepté", refused: "Refusé", expired: "Expiré" };
   box.innerHTML = `<div class="row between" style="flex-wrap:wrap;gap:10px"><p class="muted" style="margin:0">Décris le besoin d'une marque : l'IA choisit les créateurs, calcule le devis et prépare le plan de campagne.</p><button class="btn btn-primary btn-sm" id="q-new">🤖 Nouveau devis IA</button></div>
-    ${(list || []).length ? `<div class="table"><table><thead><tr><th>N°</th><th>Marque</th><th>Créateurs</th><th>Total</th><th>Statut</th><th></th></tr></thead><tbody>${list.map((q) => `<tr><td><b>${esc(q.number)}</b><div class="small muted">${dateTimeFr(q.created_at)}</div></td><td>${esc(q.brand_name)}</td>
+    ${(list || []).length ? `<div class="table"><table><thead><tr><th>N°</th><th>Marque</th><th>Créateurs</th><th>Total</th><th>Statut</th><th></th></tr></thead><tbody>${list.map((q) => `<tr><td><b>${esc(q.number)}</b><div class="small muted">${dateTimeFr(q.created_at)}</div></td><td>${esc(q.brand_name)}${q.source && q.source !== "admin" ? `<div class="small muted">${q.source === "cart" ? "🛒 Panier marque" : "🤖 Assistant marque"}</div>` : ""}</td>
       <td class="small">${esc((q.items || []).map((x) => x.influencer_name).join(", "))}</td><td>${money(q.total)}</td><td>${ST[q.status] || q.status}</td><td><button class="btn btn-ghost btn-sm" data-q="${q.id}">Ouvrir</button></td></tr>`).join("")}</tbody></table></div>`
       : `<div class="empty">Aucun devis pour l'instant.</div>`}`;
   $("#q-new").onclick = () => quoteEditor(box, ov, null);
@@ -1238,4 +1251,122 @@ async function viewQuotePublic(token, q) {
       if (termsOk && !missing) accept($("#qp-go")); }, 1200);
   } else if (pay === "annule") { history.replaceState(null, "", location.pathname + "#/devis/" + token); toast("Paiement annulé. Vous pouvez réessayer.", true); }
   else if (pay) { history.replaceState(null, "", location.pathname + "#/devis/" + token); toast("Paiement en cours de confirmation : actualisez dans un instant."); }
+}
+
+/* ==================== Assistant campagne (marques) ==================== */
+async function viewAssistant() {
+  const nets = [];
+  app.innerHTML = `<div class="inf-pro"><section class="inf-hero"><div class="wrap stack" style="gap:14px">
+    <span class="inf-kicker">🤖 Assistant campagne · Espace Pub Influenceur</span>
+    <h1>Décrivez votre besoin, l'IA compose votre campagne.</h1>
+    <p>En moins d'une minute : les créateurs qui correspondent à votre cible, le prix exact, le plan de publication et une idée de vidéo pour chacun. Vous choisissez, vous payez, c'est lancé.</p></div></section>
+  <main class="wrap" style="max-width:900px;margin-top:-56px;padding-bottom:48px">
+    <form class="card stack" id="as-f">
+      <label>Votre besoin<textarea id="as-need" rows="4" required minlength="10" placeholder="Ex. : Nous lançons un parfum pour femmes de 18 à 35 ans à Dakar. Nous voulons des vidéos naturelles qui montrent le produit, en décembre."></textarea></label>
+      <div class="grid g4"><label>Budget total (F)<input id="as-budget" type="number" min="0" step="5000" placeholder="Ex. : 300000"></label><label>Début<input id="as-start" type="date"></label><label>Fin<input id="as-end" type="date"></label>
+        <label>Pays<select id="as-country"><option value="">Tous</option>${countryOptions(state.profile?.country || "SN")}</select></label></div>
+      <label>Ville (facultatif)<input id="as-city" placeholder="Ex. : Dakar"></label>
+      <div class="stack" style="gap:6px"><b class="small">Réseaux souhaités</b>${chipRow("as-nets", Object.entries(INF_NETS), nets, "Peu importe")}</div>
+      <div class="row"><button class="btn btn-primary" type="submit">🤖 Composer ma campagne</button><span class="small muted">Environ 30 secondes.</span></div>
+    </form>
+    <div id="as-out" class="stack" style="margin-top:18px"></div></main></div>`;
+  bindChips($("#as-nets"), nets, null);
+  $("#as-f").onsubmit = async (e) => {
+    e.preventDefault(); const b = e.submitter; busy(b, true); b.textContent = "L'IA compose votre campagne…";
+    const out = $("#as-out"); out.innerHTML = `<div class="card stack" style="align-items:center;text-align:center;padding:32px"><div class="spinner"></div><p class="muted" style="margin:0">Analyse des créateurs, des audiences et des disponibilités…</p></div>`;
+    try {
+      const r = await aiCall({ action: "inf_quote_brand", need: $("#as-need").value.trim(), budget: Number($("#as-budget").value) || 0, start: $("#as-start").value, end: $("#as-end").value,
+        country: $("#as-country").value, city: $("#as-city").value.trim(), networks: [...nets] });
+      const fee = Number(r.fee) || fees().b;
+      out.innerHTML = `${r.summary ? `<div class="notice info"><div><b>Ce que nous avons compris</b><p class="small" style="margin:4px 0 0">${esc(r.summary)}</p></div></div>` : ""}
+        ${(r.questions || []).length ? `<div class="notice warn"><div><b>Pour affiner (facultatif)</b><ul class="small" style="margin:4px 0 0;padding-left:18px">${r.questions.map((x) => `<li>${esc(x)}</li>`).join("")}</ul><p class="small muted" style="margin:6px 0 0">Ajoutez ces précisions à votre besoin et relancez, ou choisissez une option ci-dessous.</p></div></div>` : ""}
+        <h2 style="margin:8px 0 0">Nos propositions</h2>
+        <div class="inf-grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">${r.options.map((o, i) => { const t = qTotals(o.items, fee); return `<div class="card stack" style="gap:10px">
+          <div class="row between"><h3 style="margin:0">${esc(o.name)}</h3><span class="inf-price">${fcfa(t.total)} F</span></div>
+          ${o.why ? `<p class="small" style="margin:0;line-height:1.5">${esc(o.why)}</p>` : ""}
+          <div class="stack small" style="gap:6px">${o.items.map((x) => `<div class="row between" style="gap:8px"><span><b>${esc(x.influencer_name)}</b>${x.certified ? " ✓" : ""} · ${esc(x.package_title)}</span><span class="muted">${esc(x.date ? dLong(x.date) : "")}</span></div>`).join("")}</div>
+          <div class="small muted">${kfmt(t.reach)} vues estimées · frais de service inclus</div>
+          <button class="btn btn-primary" data-pick="${i}">Choisir cette option</button></div>`; }).join("")}</div>`;
+      out.querySelectorAll("[data-pick]").forEach((bt) => bt.onclick = async () => { busy(bt, true);
+        try { await rpc("inf_quote_choose", { p_token: r.token, p_idx: Number(bt.dataset.pick) }); location.hash = "#/devis/" + r.token; } catch (err) { toast(errMsg(err), true); busy(bt, false); } });
+      out.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (err) { out.innerHTML = `<div class="notice warn"><span>${esc(errMsg(err))}</span></div>`; }
+    busy(b, false);
+  };
+}
+
+/* ==================== Panier multi-créateurs ==================== */
+const cartGet = () => { try { return JSON.parse(localStorage.getItem("sp_cart") || "[]"); } catch { return []; } };
+const cartSet = (c) => { try { localStorage.setItem("sp_cart", JSON.stringify(c)); } catch {} cartBadge(); };
+function cartAdd(item) {
+  const c = cartGet(); if (c.some((x) => x.package_id === item.package_id)) return toast("Déjà dans le panier");
+  if (c.length >= 20) return toast("20 formules maximum", true);
+  c.push(item); cartSet(c); toast(`${item.influencer_name} ajouté au panier`);
+}
+function cartBadge() {
+  let b = document.getElementById("cart-fab"); const n = cartGet().length;
+  const show = n && isBrandUser() && /^#\/(influence|panier|marque|assistant)/.test(location.hash) && !/^#\/panier/.test(location.hash);
+  if (!show) { b?.remove(); return; }
+  if (!b) { b = document.createElement("a"); b.id = "cart-fab"; b.href = "#/panier"; b.className = "btn btn-primary"; b.style.cssText = "position:fixed;left:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:40;box-shadow:0 8px 24px rgba(0,0,0,.25)"; document.body.appendChild(b); }
+  b.textContent = `🛒 Panier (${n})`;
+}
+window.addEventListener("hashchange", () => setTimeout(cartBadge, 50));
+function viewCart() {
+  let c = cartGet();
+  const draw = () => {
+    c = cartGet(); const fee = fees().b; const sub = c.reduce((s, x) => s + Number(x.price || 0), 0);
+    const min = new Date(Date.now() + 2 * 864e5).toISOString().slice(0, 10);
+    app.innerHTML = `<main class="wrap" style="max-width:900px"><div class="page-head"><div><p class="eyebrow">Espace Pub Influenceur</p><h1 style="font-size:2rem;margin:0">Mon panier</h1></div><a class="btn btn-ghost btn-sm" href="#/influence">+ Ajouter des créateurs</a></div>
+      ${c.length ? `<section class="card stack">${c.map((x, i) => `<div class="inf-req"><div style="flex:1;min-width:200px"><b>${esc(x.influencer_name)}</b><div class="small muted">${esc(x.title)}${(x.networks || []).length ? " · " + esc(x.networks.map((n) => INF_NETS[n] || n).join(", ")) : ""}</div></div>
+          <label class="small">Date de publication<input type="date" min="${min}" data-cd="${i}" value="${esc(x.date || "")}"></label><span class="inf-price">${fcfa(x.price)} F</span><button class="btn btn-ghost btn-sm" data-cr="${i}" aria-label="Retirer">✕</button></div>`).join("")}
+        <div class="stack small" style="gap:4px;max-width:360px;margin-left:auto;width:100%"><div class="row between"><span>Prix des créateurs</span><b>${fcfa(sub)} F</b></div><div class="row between"><span>Frais de service (${Math.round(fee * 100)} %)</span><b>${fcfa(Math.round(sub * fee))} F</b></div><div class="row between" style="font-size:1.1rem"><span>Total</span><b>${fcfa(sub + Math.round(sub * fee))} F</b></div></div></section>
+      <form class="card stack" id="ct-f"><label>Produit ou marque à promouvoir<input id="ct-prod" maxlength="120" required></label>
+        <label>Brief pour les créateurs<textarea id="ct-brief" rows="4" minlength="20" required placeholder="Ce que vous voulez montrer, le message clé, ce qu'il faut éviter… (mention #pub ajoutée automatiquement)"></textarea></label>
+        <button class="btn btn-primary" type="submit">Continuer vers le paiement</button><p class="small muted" style="margin:0">Un devis est créé avec ces créateurs : vous le vérifiez, puis vous payez en une fois (Wave, Orange Money, carte).</p></form>`
+      : `<div class="empty">Votre panier est vide. Ajoutez des formules depuis le profil des créateurs, ou laissez <a href="#/assistant">l'assistant IA</a> composer votre campagne.</div>`}</main>`;
+    app.querySelectorAll("[data-cr]").forEach((b) => b.onclick = () => { const d = cartGet(); d.splice(Number(b.dataset.cr), 1); cartSet(d); draw(); });
+    app.querySelectorAll("[data-cd]").forEach((inp) => inp.onchange = () => { const d = cartGet(); d[inp.dataset.cd].date = inp.value; cartSet(d); });
+    $("#ct-f")?.addEventListener("submit", async (e) => {
+      e.preventDefault(); const b = e.submitter; busy(b, true);
+      try { const tok = await rpc("inf_cart_quote", { p_items: cartGet().map((x) => ({ package_id: x.package_id, date: x.date || null })), p_product: $("#ct-prod").value, p_brief: $("#ct-brief").value.trim() + "\nMention #pub obligatoire." });
+        cartSet([]); location.hash = "#/devis/" + tok; }
+      catch (err) { toast(errMsg(err), true); busy(b, false); }
+    });
+  };
+  if (!state.profile) { try { sessionStorage.setItem("sp_after", "#/panier"); } catch {} location.hash = "#/connexion"; return; }
+  if (!isBrandUser()) { app.innerHTML = `<main class="wrap"><div class="empty">Le panier est réservé aux comptes marque.</div></main>`; return; }
+  draw();
+}
+
+/* ==================== Rapport de campagne ==================== */
+function infReportDoc(x) {
+  const R = x.results || {}; const w = window.open("", "_blank"); if (!w) return toast("Autorise les fenêtres pour ouvrir le rapport", true);
+  const n = (k) => Number(R[k]) || 0; const inter = n("likes") + n("comments") + n("shares");
+  const eng = n("views") ? (inter / n("views") * 100).toFixed(1).replace(".", ",") + " %" : "—";
+  const kpi = [["Vues", R.views], ["J'aime", R.likes], ["Commentaires", R.comments], ["Partages", R.shares], ["Clics sur le lien", R.clicks], ["Nouveaux abonnés marque", R.followers]].filter(([, v]) => v != null && v !== "");
+  w.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rapport ${esc(x.influencer_name)} ${esc(x.brand_company || "")}</title>
+  <style>@page{size:A4;margin:0}body{font:14px/1.55 system-ui,sans-serif;color:#10201D;max-width:820px;margin:20px auto;padding:0 16px}@media print{.noprint{display:none}body{padding:14mm 16mm!important;margin:0}}
+  .logo{font-weight:800;font-size:24px;color:#0E3B36}.logo span{color:#E8A33D}h1{font-size:22px;margin:6px 0}.muted{color:#55625F;font-size:12px}.k{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:18px 0}
+  .k div{background:#F6F4EF;border-radius:12px;padding:12px}.k b{display:block;font-size:22px}.txt{white-space:pre-wrap;border-left:3px solid #E8A33D;padding-left:14px}button{padding:10px 16px;border:0;border-radius:10px;background:#0E3B36;color:#fff;font-weight:700;cursor:pointer;margin-bottom:14px}</style></head><body>
+  <div class="noprint"><button onclick="print()">Imprimer / enregistrer en PDF</button></div>
+  <div class="logo">Statu<span>Pub</span></div><h1>Rapport de campagne</h1>
+  <div class="muted">${esc(x.brand_company || "")} · ${esc(x.influencer_name)} · ${esc(x.package_title)}${x.published_at ? " · publié le " + new Date(x.published_at).toLocaleDateString("fr-FR") : ""}${x.post_url ? ` · <a href="${esc(x.post_url)}">voir la publication</a>` : ""}</div>
+  <div class="k">${kpi.map(([k, v]) => `<div><span class="muted">${k}</span><b>${fcfa(v)}</b></div>`).join("")}<div><span class="muted">Taux d'engagement</span><b>${eng}</b></div><div><span class="muted">Coût par vue</span><b>${n("views") ? (x.total / n("views")).toFixed(1).replace(".", ",") + " F" : "—"}</b></div></div>
+  ${x.report_text ? `<div class="txt">${esc(x.report_text)}</div>` : ""}
+  <p class="muted" style="margin-top:24px">Chiffres relevés par StatuPub sur la publication du créateur. Rapport généré le ${new Date().toLocaleDateString("fr-FR")}.</p></body></html>`);
+  w.document.close();
+}
+function infResultsModal(x, reload) {
+  const R = x.results || {};
+  const f = [["views", "Vues"], ["likes", "J'aime"], ["comments", "Commentaires"], ["shares", "Partages"], ["clicks", "Clics sur le lien"], ["followers", "Nouveaux abonnés marque"]];
+  openModal(`<h2 style="margin:0">Résultats · ${esc(x.influencer_name)}</h2><p class="small muted" style="margin:0">Relève les chiffres sur la publication (7 jours après, idéalement). La marque verra le rapport dans son espace.</p>
+    <div class="grid g3">${f.map(([k, l]) => `<label class="small">${l}<input type="number" min="0" data-r="${k}" value="${esc(R[k] ?? "")}"></label>`).join("")}</div>
+    <label class="small">Remarques pour l'IA (facultatif)<input id="rs-notes" placeholder="Ex. : beaucoup de commentaires positifs sur l'odeur"></label>
+    <div class="row"><button class="btn btn-ghost" id="rs-ai">🤖 Rédiger le rapport avec l'IA</button></div>
+    <label class="small">Texte du rapport (visible par la marque)<textarea id="rs-txt" rows="8">${esc(x.report_text || "")}</textarea></label>
+    <div class="row"><button class="btn btn-primary" id="rs-save">Enregistrer et envoyer à la marque</button><button class="btn btn-ghost" data-close>Fermer</button></div>`, (m) => {
+    const vals = () => { const o = {}; m.querySelectorAll("[data-r]").forEach((i) => { if (i.value !== "") o[i.dataset.r] = Number(i.value); }); return o; };
+    $("#rs-ai", m).onclick = async (e) => { busy(e.target, true); try { const r = await aiCall({ action: "inf_report", booking: x.id, results: vals(), notes: $("#rs-notes", m).value }); $("#rs-txt", m).value = r.text; toast("Rapport rédigé : relis-le avant d'envoyer"); } catch (err) { toast(errMsg(err), true); } busy(e.target, false); };
+    $("#rs-save", m).onclick = async (e) => { busy(e.target, true); try { await rpc("inf_admin_results", { p_id: x.id, p_results: vals(), p_report: $("#rs-txt", m).value.trim() || null }); closeModal(); toast("Résultats enregistrés"); reload(); } catch (err) { toast(errMsg(err), true); busy(e.target, false); } };
+  });
 }

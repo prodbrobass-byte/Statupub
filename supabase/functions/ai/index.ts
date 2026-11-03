@@ -56,7 +56,8 @@ async function infQuote(b: any) {
       bio: (i.bio || "").slice(0, 300), note: r.length ? +(r.reduce((t: number, x: any) => t + x.rating, 0) / r.length).toFixed(1) : null, avis: r.length,
       reseaux: (nets || []).filter((n: any) => n.influencer_id === i.id).map((n: any) => ({ reseau: n.network, abonnes: n.followers, vues_moy: n.avg_views, engagement: n.engagement, audience: n.audience })),
       formules: (pks || []).filter((p: any) => p.influencer_id === i.id).map((p: any) => ({ id: p.id, titre: p.title, description: (p.description || "").slice(0, 200),
-        reseaux: p.networks?.length ? p.networks : p.network ? [p.network] : [], prix_F: p.on_request ? null : p.price, sur_demande: p.on_request })),
+        reseaux: p.networks?.length ? p.networks : p.network ? [p.network] : [], prix_F: p.on_request ? null : p.price, sur_demande: p.on_request }))
+        .filter((f: any) => !(b.noRequest && (f.sur_demande || !f.prix_F))),
       dates_prises: (busy || []).filter((x: any) => x.influencer_id === i.id).map((x: any) => x.publish_date),
     };
   }).filter((c: any) => c.formules.length);
@@ -149,10 +150,46 @@ Deno.serve(async (req) => {
     const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
     const { data: u } = await sb.auth.getUser(token);
     if (!u?.user) return json({ error: "Connexion requise" }, 401);
-    const { data: me } = await sb.from("profiles").select("role").eq("id", u.user.id).single();
+    const { data: me } = await sb.from("profiles").select("role, is_blocked, full_name, company, phone").eq("id", u.user.id).single();
+    const body = await req.json(); const { action, text, thread, mode } = body;
+
+    // Assistant campagne ouvert aux marques : l'IA propose, le devis est enregistré pour être accepté et payé en ligne
+    if (action === "inf_quote_brand") {
+      if (me?.role !== "annonceur" || me?.is_blocked) return json({ error: "Réservé aux comptes marque" }, 403);
+      const since = new Date(Date.now() - 864e5).toISOString();
+      const { count } = await sb.from("influence_quotes").select("id", { count: "exact", head: true }).eq("brand_id", u.user.id).eq("source", "assistant").gte("created_at", since);
+      if ((count ?? 0) >= 8) return json({ error: "Tu as déjà demandé 8 propositions aujourd'hui. Réessaie demain ou contacte StatuPub." }, 429);
+      const { data: br } = await sb.from("brands").select("company, phone").eq("id", u.user.id).maybeSingle();
+      const brand = br?.company || me.company || me.full_name || "Ma marque";
+      const r = await infQuote({ ...body, brand, noRequest: true });
+      const opts = r.options.map((o: any) => ({ name: o.name, strategy: o.strategy, why: o.why, items: o.items }));
+      const first = opts[0]; const sub = first.items.reduce((t: number, x: any) => t + (x.price || 0), 0);
+      const { data: q, error } = await sb.from("influence_quotes").insert({
+        brand_id: u.user.id, brand_name: brand, contact: br?.phone || me.phone || null, source: "assistant", status: "sent", created_by: u.user.id,
+        request: { need: body.need, budget: body.budget, start: body.start, end: body.end, country: body.country, city: body.city, networks: body.networks, summary: r.summary, questions: r.questions },
+        options: opts, chosen: 0, items: first.items, plan: r.plan, subtotal: sub, fee: Math.round(sub * r.fee), total: sub + Math.round(sub * r.fee),
+        reach: first.items.reduce((t: number, x: any) => t + (x.reach || 0), 0), valid_until: iso(new Date(Date.now() + 7 * 864e5)),
+      }).select("token").single();
+      if (error) throw new Error(error.message);
+      return json({ token: q.token, summary: r.summary, questions: r.questions, options: opts, plan: r.plan, fee: r.fee });
+    }
+
     if (me?.role !== "admin") return json({ error: "Réservé à l'admin" }, 403);
 
-    const body = await req.json(); const { action, text, thread, mode } = body;
+    // Rapport de campagne rédigé par l'IA à partir des résultats saisis par l'admin
+    if (action === "inf_report") {
+      const { data: b } = await sb.from("influence_bookings").select("package_title, product, brief, publish_date, published_at, post_url, results, influencer_id, brand_id").eq("id", body.booking).single();
+      if (!b) return json({ error: "Réservation introuvable" }, 404);
+      const [{ data: i }, { data: br }] = await Promise.all([
+        sb.from("influencers").select("display_name").eq("id", b.influencer_id).single(),
+        sb.from("brands").select("company").eq("id", b.brand_id).maybeSingle(),
+      ]);
+      const res = { ...(b.results || {}), ...(body.results || {}) };
+      const sys = `Tu rédiges le rapport de fin de campagne influenceur de StatuPub pour la marque. Français professionnel, vouvoiement, clair, positif mais honnête.
+Structure : 1) Résumé en 2 phrases ; 2) Les chiffres clés (uniquement ceux fournis, n'invente rien) avec le taux d'engagement si vues et interactions sont fournies ((likes+commentaires+partages)/vues) ; 3) Ce qui a bien marché ; 4) Conseils pour la prochaine campagne (2 ou 3 points). 1 200 caractères maximum. Texte brut, sans markdown ni astérisques, titres en majuscules suivis de deux-points.`;
+      const user = `Marque : ${br?.company || ""}\nCréateur : ${i?.display_name || ""}\nPrestation : ${b.package_title}\nProduit : ${b.product || ""}\nPublication : ${b.published_at || b.publish_date || ""} ${b.post_url || ""}\nBrief : ${(b.brief || "").slice(0, 600)}\nRésultats (JSON) : ${JSON.stringify(res)}\nNotes de l'équipe : ${body.notes || ""}`;
+      return json({ text: await claude("claude-sonnet-5-5", sys, user, 1500) });
+    }
 
     if (action === "fix") {
       if (!text || String(text).length > 2000) return json({ error: "Texte vide ou trop long" }, 400);
