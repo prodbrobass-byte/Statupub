@@ -1095,8 +1095,11 @@ async function quoteEditor(box, ov, q) {
         price: p.on_request ? 0 : p.price, on_request: p.on_request, date: "", time: "", brief: "", reach: (nn || []).filter((n) => !pn.length || pn.includes(n.network)).reduce((s, n) => s + (Number(n.avg_views) || Math.round(n.followers * 0.2)), 0) });
       draw(); };
     $("#q-save").onclick = (e) => save(e.target);
-    $("#q-pdf").onclick = () => { sync(); quoteDoc(st, fee); };
-    $("#q-wa").onclick = () => { sync(); const t2 = qTotals(cur().items, fee); const tel = String(st.contact || "").replace(/\D/g, "");
+    const ready = () => { sync(); const miss = cur().items.filter((x) => !(Number(x.price) > 0));
+      if (miss.length) { toast(`Fixe le prix de : ${miss.map((x) => x.influencer_name).join(", ")} (formule sur demande)`, true); return false; }
+      if (!cur().items.length) { toast("Ajoute au moins un créateur", true); return false; } return true; };
+    $("#q-pdf").onclick = async (e) => { if (!ready()) return; const w = window.open("", "_blank"); if (!(await save(e.target))) { w?.close(); return; } quoteDoc(st, fee, w); };
+    $("#q-wa").onclick = async (e) => { if (!ready()) return; if (!(await save(e.target))) return; const t2 = qTotals(cur().items, fee); const tel = String(st.contact || "").replace(/\D/g, "");
       const msg = `Bonjour ${st.brand_name},\n\nVoici notre proposition de campagne influenceurs StatuPub${st.number ? " (devis " + st.number + ")" : ""} :\n\n${cur().items.map((x) => `• ${x.influencer_name} · ${x.package_title}${x.date ? " · " + dLong(x.date) : ""} : ${fcfa(x.price)} F`).join("\n")}\n\nFrais de service : ${fcfa(t2.fee)} F\nTotal : ${fcfa(t2.total)} F CFA\nVues estimées : ${kfmt(t2.reach)}\n\nJe vous envoie le devis détaillé et le plan de travail en PDF. Le paiement est sécurisé : les créateurs sont payés après publication.`;
       window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, "_blank", "noopener"); };
   }
@@ -1116,16 +1119,17 @@ async function quoteEditor(box, ov, q) {
       options: st.ai.options, chosen: st.chosen, items: o.items, plan: st.ai.plan, ...t, status: st.status, valid_until: st.valid || null, updated_at: new Date().toISOString() };
     busy(btn, true);
     try { const r = st.id ? await sb.from("influence_quotes").update(row).eq("id", st.id).select().single() : await sb.from("influence_quotes").insert(row).select().single();
-      if (r.error) throw r.error; st.id = r.data.id; st.number = r.data.number; toast("Devis " + st.number + " enregistré"); }
+      if (r.error) throw r.error; st.id = r.data.id; st.number = r.data.number; toast("Devis " + st.number + " enregistré");
+      const h2 = box.querySelector("h2"); if (h2) h2.textContent = "Devis " + st.number; busy(btn, false); return true; }
     catch (e) { toast(errMsg(e), true); }
-    busy(btn, false);
+    busy(btn, false); return false;
   }
   draw();
 }
 
-function quoteDoc(st, fee) {
+function quoteDoc(st, fee, win) {
   const o = st.ai.options[st.chosen]; const t = qTotals(o.items, fee);
-  const w = window.open("", "_blank"); if (!w) return toast("Autorise les fenêtres pour ouvrir le devis", true);
+  const w = win || window.open("", "_blank"); if (!w) return toast("Autorise les fenêtres pour ouvrir le devis", true);
   const today = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
   const plan = [...(st.ai.plan || [])].filter((p) => p.etape).sort((a, b) => String(a.date).localeCompare(String(b.date)));
   w.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Devis ${esc(st.number || "")} · ${esc(st.brand_name)}</title>
@@ -1136,7 +1140,7 @@ function quoteDoc(st, fee) {
   .box{background:#F6F4EF;border-radius:10px;padding:12px 14px}.tl{border-left:3px solid #E8A33D;margin-left:6px;padding-left:16px}.tl div{margin:0 0 10px}.tl b{color:#0E3B36}
   .brief{border:1px solid #E3E0D8;border-radius:10px;padding:10px 12px;margin-bottom:10px;break-inside:avoid;white-space:pre-wrap}button{margin:0 0 16px;padding:10px 16px;border:0;border-radius:10px;background:#0E3B36;color:#fff;font-weight:700;cursor:pointer}
   @media print{button{display:none}body{margin:0}}</style></head><body>
-  <button onclick="print()">Imprimer / enregistrer en PDF</button>
+  <button onclick="print()">Imprimer / enregistrer en PDF</button><span class="muted" style="margin-left:10px">Astuce : dans la fenêtre d'impression, décoche « En-têtes et pieds de page ».</span>
   <div class="hd"><div><div class="logo">Statu<span>Pub</span></div><div class="muted">Espace Pub Influenceur · West Africa SN Production · statupub.com</div></div>
     <div style="text-align:right"><h1>DEVIS ${esc(st.number || "(brouillon)")}</h1><div class="muted">Émis le ${today}<br>Valable jusqu'au ${st.valid ? new Date(st.valid + "T12:00:00").toLocaleDateString("fr-FR") : "—"}</div></div></div>
   <p><b>Client :</b> ${esc(st.brand_name)}${st.contact ? " · " + esc(st.contact) : ""}</p>
