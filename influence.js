@@ -106,7 +106,7 @@ async function viewInfluence() {
       <div class="stack" style="gap:6px;flex:1 1 100%"><b class="small muted">Réseaux (un, plusieurs ou tous)</b>${chipRow("if-net", Object.entries(INF_NETS), f.nets, "Tous les réseaux")}</div>
       <div class="stack" style="gap:6px;flex:1 1 100%"><b class="small muted">Catégories</b>${chipRow("if-cat", cats.map((c) => [c, c]), f.cats, "Toutes")}</div>
       <label>Nom ou ville<input id="if-q" type="search" placeholder="Ex. : Dakar"></label>
-      ${see ? `<label>Budget max (F)<input id="if-max" type="number" min="0" step="5000" placeholder="Ex. : 300000"></label>` : ""}
+      ${see ? `<label>Budget max (F)<input id="if-max" type="number" min="0" step="any" placeholder="Ex. : 300000"></label>` : ""}
     </form>
     ${!see ? `<div class="notice info"><div><b>Les prix sont réservés aux marques inscrites.</b><p class="small muted">Créez votre compte entreprise gratuitement pour voir les tarifs et réserver, ou demandez un prix sur le profil d'un créateur.</p></div><a class="btn btn-ink btn-sm" href="#/inscription?role=annonceur">Créer mon compte marque</a></div>` : ""}
     <section class="card row between" style="flex-wrap:wrap;gap:14px;border:2px solid var(--saffron)"><div style="flex:1;min-width:240px"><h2 style="margin:0">🤖 Pas le temps de chercher ?</h2><p class="muted" style="margin:4px 0 0">Décrivez votre besoin : l'IA choisit les créateurs, le prix et le plan de publication pour vous.</p></div>
@@ -1049,7 +1049,7 @@ async function quoteEditor(box, ov, q) {
       <div class="grid g2"><label>Marque<input id="q-brand" list="q-brands" required value="${esc(st.brand_name)}" placeholder="Nom de l'entreprise"><datalist id="q-brands">${ov.brands.map((b) => `<option value="${esc(b.company)}">`).join("")}</datalist></label>
         <label>Contact (WhatsApp)<input id="q-contact" type="tel" value="${esc(st.contact)}" placeholder="+221…"></label></div>
       <label>Besoin de la marque<textarea id="q-need" rows="4" required minlength="10" placeholder="Ex. : Lancement d'un parfum pour femmes 18-35 ans à Dakar, on veut des vidéos naturelles qui montrent le produit, campagne en décembre.">${esc(st.req.need || "")}</textarea></label>
-      <div class="grid g4"><label>Budget total (F)<input id="q-budget" type="number" min="0" step="5000" value="${esc(st.req.budget || "")}"></label><label>Début<input id="q-start" type="date" value="${esc(st.req.start || "")}"></label>
+      <div class="grid g4"><label>Budget total (F)<input id="q-budget" type="number" min="0" step="any" value="${esc(st.req.budget || "")}"></label><label>Début<input id="q-start" type="date" value="${esc(st.req.start || "")}"></label>
         <label>Fin<input id="q-end" type="date" value="${esc(st.req.end || "")}"></label><label>Pays<select id="q-country"><option value="">Tous</option>${countryOptions(st.req.country || "")}</select></label></div>
       <label>Ville (facultatif)<input id="q-city" value="${esc(st.req.city || "")}"></label>
       <div class="stack" style="gap:6px"><b class="small">Réseaux souhaités</b>${chipRow("q-nets", Object.entries(INF_NETS), nets, "Libre")}</div>
@@ -1263,7 +1263,7 @@ async function viewAssistant() {
   <main class="wrap" style="max-width:900px;margin-top:-56px;padding-bottom:48px">
     <form class="card stack" id="as-f">
       <label>Votre besoin<textarea id="as-need" rows="4" required minlength="10" placeholder="Ex. : Nous lançons un parfum pour femmes de 18 à 35 ans à Dakar. Nous voulons des vidéos naturelles qui montrent le produit, en décembre."></textarea></label>
-      <div class="grid g4"><label>Budget total (F)<input id="as-budget" type="number" min="0" step="5000" placeholder="Ex. : 300000"></label><label>Début<input id="as-start" type="date"></label><label>Fin<input id="as-end" type="date"></label>
+      <div class="grid g4"><label>Budget total (F)<input id="as-budget" type="number" min="0" step="any" placeholder="Ex. : 300000"></label><label>Début<input id="as-start" type="date"></label><label>Fin<input id="as-end" type="date"></label>
         <label>Pays<select id="as-country"><option value="">Tous</option>${countryOptions(state.profile?.country || "SN")}</select></label></div>
       <label>Ville (facultatif)<input id="as-city" placeholder="Ex. : Dakar"></label>
       <div class="stack" style="gap:6px"><b class="small">Réseaux souhaités</b>${chipRow("as-nets", Object.entries(INF_NETS), nets, "Peu importe")}</div>
