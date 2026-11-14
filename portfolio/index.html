@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Portfolio privé</title>
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#0B0B0C">
+<meta property="og:title" content="Lamine Niass · Portfolio privé">
+<meta property="og:description" content="Réalisation · Cadrage · Montage · Motion design · Développement web. Lien personnel, merci de ne pas le partager.">
+<link rel="icon" href="/logo/statupub-icone-1024.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0B0B0C;--bg2:#141416;--line:#26262A;--text:#F4F2EC;--muted:#A3A09A;--acc:#E8A33D;--r:18px}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:inherit}img{max-width:100%;display:block}
+.wrap{width:min(1180px,100% - 32px);margin:0 auto}
+h1,h2,h3{font-family:"Bricolage Grotesque",sans-serif;line-height:1.05;margin:0;letter-spacing:-.02em}
+.eyebrow{font-size:.78rem;letter-spacing:.18em;text-transform:uppercase;color:var(--acc);font-weight:600}
+.btn{display:inline-flex;align-items:center;gap:10px;padding:14px 22px;border-radius:999px;font-weight:600;text-decoration:none;border:1px solid var(--line);background:transparent;color:var(--text);cursor:pointer;font:inherit;font-weight:600}
+.btn.acc{background:var(--acc);border-color:var(--acc);color:#1A1205}
+.btn:hover{transform:translateY(-1px)}
+.btn:focus-visible,.chip:focus-visible,.work:focus-visible{outline:3px solid var(--acc);outline-offset:3px}
+/* hero */
+.hero{position:relative;min-height:92vh;display:flex;align-items:flex-end;overflow:hidden;padding:120px 0 64px}
+.hero .bg{position:absolute;inset:0;background-size:cover;background-position:center;opacity:.45;filter:saturate(.9)}
+.hero .bg video{width:100%;height:100%;object-fit:cover}
+.hero::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,11,12,.2) 0%,rgba(11,11,12,.55) 55%,var(--bg) 100%)}
+.hero .in{position:relative;z-index:1;display:flex;flex-direction:column;gap:22px}
+.hero h1{font-size:clamp(3rem,10vw,8.5rem);font-weight:800}
+.hero h1 span{color:var(--acc)}
+.roles{display:flex;flex-wrap:wrap;gap:10px}
+.roles span{border:1px solid rgba(244,242,236,.25);padding:7px 14px;border-radius:999px;font-size:.9rem;backdrop-filter:blur(6px);background:rgba(11,11,12,.3)}
+.hero .row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.top{position:fixed;top:0;left:0;right:0;z-index:20;padding:14px 0;background:linear-gradient(180deg,rgba(11,11,12,.85),transparent)}
+.top .wrap{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.top b{font-family:"Bricolage Grotesque";font-size:1.1rem}
+.top nav{display:flex;gap:18px;font-size:.92rem}.top nav a{text-decoration:none;color:var(--muted)}.top nav a:hover{color:var(--text)}
+.private{font-size:.75rem;color:var(--muted);border:1px solid var(--line);padding:4px 10px;border-radius:999px;white-space:nowrap}
+section{padding:72px 0}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.stats div{background:var(--bg);padding:26px}.stats b{display:block;font-family:"Bricolage Grotesque";font-size:2.6rem;color:var(--acc);line-height:1}
+.head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:18px;margin-bottom:28px}
+.head h2{font-size:clamp(2rem,5vw,3.4rem)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);background:var(--bg2);color:var(--muted);padding:9px 16px;border-radius:999px;cursor:pointer;font:inherit;font-size:.92rem}
+.chip[aria-pressed="true"]{background:var(--text);color:var(--bg);border-color:var(--text);font-weight:600}
+.grid{align-items:start;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px}
+.work{position:relative;border-radius:var(--r);overflow:hidden;background:var(--bg2);border:1px solid var(--line);cursor:pointer;text-align:left;padding:0;color:inherit;font:inherit;display:flex;flex-direction:column}
+.work.big{grid-column:span 2}
+@media (max-width:700px){.work.big{grid-column:auto}}
+.work .th{aspect-ratio:16/10;background:#1C1C1F center/cover no-repeat;position:relative;display:flex;align-items:center;justify-content:center}
+.work.big .th{aspect-ratio:16/8}
+.work .th .ph{font-family:"Bricolage Grotesque";font-size:2.4rem;font-weight:800;color:#3A3A40;padding:20px;text-align:center}
+.work .play{position:absolute;width:62px;height:62px;border-radius:50%;background:rgba(11,11,12,.6);border:1px solid rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;transition:transform .2s}
+.work:hover .play{transform:scale(1.08);background:var(--acc)}
+.work .tag{position:absolute;top:12px;left:12px;background:rgba(11,11,12,.75);padding:5px 10px;border-radius:999px;font-size:.75rem;font-weight:600}
+.work .meta{padding:16px 18px 18px;display:flex;flex-direction:column;gap:4px}
+.work h3{font-size:1.3rem}.work .sub{color:var(--muted);font-size:.9rem}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}
+.box{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);padding:26px}
+.box h3{font-size:1.25rem;margin-bottom:14px}
+.list{display:flex;flex-wrap:wrap;gap:8px}.list span{background:#1E1E21;border-radius:10px;padding:7px 12px;font-size:.92rem}
+.about{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:40px;align-items:center}
+@media (max-width:800px){.about{grid-template-columns:1fr}}
+.about img{border-radius:var(--r);aspect-ratio:4/5;object-fit:cover;width:100%}
+.about p{font-size:1.15rem;color:#D9D6CF}
+.contact{text-align:center;background:var(--acc);color:#1A1205;border-radius:28px;padding:64px 24px}
+.contact h2{font-size:clamp(2.2rem,6vw,4.4rem)}.contact p{max-width:560px;margin:14px auto 26px}
+.contact .btn{background:#1A1205;color:#fff;border-color:#1A1205}.contact .btn.ghost{background:transparent;color:#1A1205}
+footer{padding:36px 0 48px;color:var(--muted);font-size:.85rem;text-align:center}
+/* visionneuse */
+.modal{position:fixed;inset:0;z-index:50;background:rgba(5,5,6,.92);display:flex;align-items:center;justify-content:center;padding:16px}
+.modal[hidden]{display:none}
+.mbox{width:min(1100px,100%);max-height:100%;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r)}
+.player{background:#000;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center}
+.player iframe,.player video{width:100%;height:100%;border:0}
+.player img{max-height:75vh;width:auto;margin:auto}
+.mmeta{padding:22px 24px;display:flex;flex-direction:column;gap:10px}
+.mmeta h3{font-size:1.8rem}
+.gal{display:flex;gap:8px;overflow-x:auto;padding:0 24px 22px}.gal img{height:90px;border-radius:10px;cursor:pointer}
+.x{position:fixed;top:14px;right:14px;z-index:51;width:46px;height:46px;border-radius:50%;border:1px solid var(--line);background:var(--bg2);color:var(--text);font-size:1.4rem;cursor:pointer}
+.lock{min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
+.lock .box{max-width:460px}
+.empty{color:var(--muted);text-align:center;padding:40px;border:1px dashed var(--line);border-radius:var(--r)}
+.fade{opacity:0;transform:translateY(16px);transition:opacity .6s,transform .6s}.fade.on{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}.fade{opacity:1;transform:none}}
+@media (max-width:640px){.top nav{display:none}section{padding:52px 0}}
+</style>
+</head>
+<body>
+<div id="app"><div class="lock"><p style="color:#A3A09A">Chargement…</p></div></div>
+<div class="modal" id="mod" hidden role="dialog" aria-modal="true" aria-label="Projet"><button class="x" id="mx" aria-label="Fermer">×</button><div class="mbox" id="mb"></div></div>
+<script>
+(function () {
+  var SB = "https://zqqtqopcrlxvsxvqmfjo.supabase.co", KEY = "sb_publishable_ELwnBEHmoxzb1NemI_nAig_YdEish0f";
+  var CAT = { realisation: "Réalisation", cadrage: "Cadrage", montage: "Montage", motion: "Motion design", web: "Développement web", photo: "Photo" };
+  var app = document.getElementById("app");
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
+  var ytId = function (u) { var m = String(u || "").match(/(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{11})/); return m && m[1]; };
+  var vmId = function (u) { var m = String(u || "").match(/vimeo\.com\/(?:video\/)?(\d+)/); return m && m[1]; };
+  var thumbOf = function (i) { if (i.thumb_url) return i.thumb_url; if (i.media_type === "youtube" && ytId(i.media_url)) return "https://i.ytimg.com/vi/" + ytId(i.media_url) + "/hqdefault.jpg"; if (i.media_type === "image") return i.media_url; return (i.gallery || [])[0] || ""; };
+  var token = (new URLSearchParams(location.search).get("k") || location.hash.replace(/^#/, "")).toLowerCase().replace(/[^a-f0-9]/g, "");
+  function locked(msg) { app.innerHTML = '<div class="lock"><div class="box"><p class="eyebrow">Portfolio privé</p><h2 style="font-size:2rem;margin:10px 0">' + esc(msg) + '</h2><p style="color:#A3A09A">Ce portfolio n\'est accessible qu\'avec un lien personnel. Demandez un nouveau lien à son propriétaire.</p></div></div>'; }
+  if (!token) return locked("Lien manquant");
+  fetch(SB + "/rest/v1/rpc/portfolio_get", { method: "POST", headers: { "Content-Type": "application/json", apikey: KEY }, body: JSON.stringify({ p_token: token }) })
+    .then(function (r) { return r.json(); }).then(function (d) { if (!d || !d.profile) return locked("Lien invalide ou expiré"); render(d); })
+    .catch(function () { locked("Connexion impossible"); });
+
+  function render(d) {
+    var p = d.profile, items = d.items || [];
+    document.documentElement.style.setProperty("--acc", p.accent || "#E8A33D");
+    document.title = p.name + " · Portfolio";
+    var parts = String(p.name || "").split(" "), last = parts.pop();
+    var cats = Object.keys(CAT).filter(function (k) { return items.some(function (i) { return i.category === k; }); });
+    var wa = String(p.contact_phone || "").replace(/\D/g, "");
+    var socials = p.socials || {};
+    var showYt = ytId(p.showreel_url), showVm = vmId(p.showreel_url);
+    var heroBg = p.cover_url ? '<div class="bg" style="background-image:url(\'' + esc(p.cover_url) + '\')"></div>'
+      : (p.showreel_url && /\.(mp4|webm|mov)(\?|$)/i.test(p.showreel_url) ? '<div class="bg"><video src="' + esc(p.showreel_url) + '" autoplay muted loop playsinline></video></div>' : '<div class="bg"></div>');
+    var stats = (p.stats || []).filter(function (s) { return s && s.value; });
+    app.innerHTML =
+      '<header class="top"><div class="wrap"><b>' + esc(p.name) + '</b><nav aria-label="Sections"><a href="#travaux">Travaux</a><a href="#expertise">Expertise</a><a href="#apropos">À propos</a><a href="#contact">Contact</a></nav><span class="private">🔒 Lien privé' + (d.for ? " · " + esc(d.for) : "") + '</span></div></header>' +
+      '<section class="hero">' + heroBg + '<div class="wrap in fade"><p class="eyebrow">' + esc(p.location || "") + '</p><h1>' + esc(parts.join(" ")) + ' <span>' + esc(last) + '</span></h1>' +
+      '<div class="roles">' + String(p.headline || "").split("·").map(function (r) { return r.trim() ? "<span>" + esc(r.trim()) + "</span>" : ""; }).join("") + '</div>' +
+      '<div class="row">' + (p.showreel_url ? '<button class="btn acc" id="reel">▶ Voir le showreel</button>' : "") + '<a class="btn" href="#travaux">Voir les travaux</a><a class="btn" href="#contact">Me contacter</a></div></div></section>' +
+      (stats.length ? '<section style="padding-top:0"><div class="wrap fade"><div class="stats">' + stats.map(function (s) { return "<div><b>" + esc(s.value) + "</b>" + esc(s.label) + "</div>"; }).join("") + '</div></div></section>' : "") +
+      '<section id="travaux"><div class="wrap"><div class="head fade"><div><p class="eyebrow">Sélection</p><h2>Travaux</h2></div>' +
+      (cats.length > 1 ? '<div class="chips" role="group" aria-label="Filtrer par métier"><button class="chip" data-c="" aria-pressed="true">Tout</button>' + cats.map(function (c) { return '<button class="chip" data-c="' + c + '" aria-pressed="false">' + CAT[c] + "</button>"; }).join("") + "</div>" : "") +
+      '</div><div class="grid" id="grid"></div></div></section>' +
+      '<section id="expertise"><div class="wrap"><div class="head fade"><div><p class="eyebrow">Ce que je fais</p><h2>Expertise</h2></div></div><div class="cols fade">' +
+      ((p.skills || []).length ? '<div class="box"><h3>Métiers</h3><div class="list">' + p.skills.map(function (s) { return "<span>" + esc(s) + "</span>"; }).join("") + "</div></div>" : "") +
+      ((p.tools || []).length ? '<div class="box"><h3>Outils & matériel</h3><div class="list">' + p.tools.map(function (s) { return "<span>" + esc(s) + "</span>"; }).join("") + "</div></div>" : "") +
+      ((p.clients || []).length ? '<div class="box"><h3>Ils m\'ont fait confiance</h3><div class="list">' + p.clients.map(function (s) { return "<span>" + esc(s) + "</span>"; }).join("") + "</div></div>" : "") +
+      '</div></div></section>' +
+      (p.bio ? '<section id="apropos"><div class="wrap about fade">' + (p.avatar_url ? '<img src="' + esc(p.avatar_url) + '" alt="' + esc(p.name) + '">' : "<div></div>") + '<div><p class="eyebrow">À propos</p><h2 style="font-size:clamp(2rem,5vw,3.2rem);margin:8px 0 18px">' + esc(p.name) + '</h2><p>' + esc(p.bio).replace(/\n/g, "<br>") + '</p></div></div></section>' : "") +
+      '<section id="contact"><div class="wrap"><div class="contact fade"><h2>Travaillons ensemble.</h2><p>Un film, une pub, un clip, un événement ou une plateforme web : parlons de votre projet.</p><div class="row" style="justify-content:center;display:flex;flex-wrap:wrap;gap:12px">' +
+      (wa ? '<a class="btn" href="https://wa.me/' + wa + '?text=' + encodeURIComponent("Bonjour " + p.name + ", j'ai vu votre portfolio et j'aimerais discuter d'un projet.") + '" target="_blank" rel="noopener">WhatsApp</a>' : "") +
+      (p.contact_email ? '<a class="btn ghost" href="mailto:' + esc(p.contact_email) + '">' + esc(p.contact_email) + "</a>" : "") +
+      Object.keys(socials).filter(function (k) { return /^https?:\/\//.test(socials[k] || ""); }).map(function (k) { return '<a class="btn ghost" href="' + esc(socials[k]) + '" target="_blank" rel="noopener">' + esc(k) + "</a>"; }).join("") +
+      '</div></div></div></section><footer>© ' + new Date().getFullYear() + " " + esc(p.name) + " · Portfolio privé, merci de ne pas partager ce lien.</footer>";
+
+    var grid = document.getElementById("grid"), cur = "";
+    function draw() {
+      var list = items.filter(function (i) { return !cur || i.category === cur; });
+      grid.innerHTML = list.length ? list.map(function (i, k) {
+        var t = thumbOf(i), vid = ["youtube", "vimeo", "video"].indexOf(i.media_type) >= 0;
+        return '<button class="work' + (i.featured && !cur ? " big" : "") + '" data-i="' + items.indexOf(i) + '" aria-label="' + esc(i.title) + '"><div class="th" style="' + (t ? "background-image:url('" + esc(t) + "')" : "") + '">' + (t ? "" : '<span class="ph">' + esc(i.title) + "</span>") +
+          (vid ? '<span class="play" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24"><path fill="#fff" d="M8 5v14l11-7z"/></svg></span>' : "") + '<span class="tag">' + esc(CAT[i.category] || "") + '</span></div><div class="meta"><h3>' + esc(i.title) + '</h3><span class="sub">' + esc([i.role, i.client, i.year].filter(Boolean).join(" · ")) + "</span></div></button>";
+      }).join("") : '<div class="empty">Les projets arrivent bientôt.</div>';
+      grid.querySelectorAll("[data-i]").forEach(function (b) { b.onclick = function () { open(items[+b.dataset.i]); }; });
+    }
+    document.querySelectorAll("[data-c]").forEach(function (b) { b.onclick = function () { cur = b.dataset.c; document.querySelectorAll("[data-c]").forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); }); draw(); }; });
+    draw();
+    var reel = document.getElementById("reel");
+    if (reel) reel.onclick = function () { open({ title: "Showreel", media_type: showYt ? "youtube" : showVm ? "vimeo" : "video", media_url: p.showreel_url, description: "" }); };
+    var io = "IntersectionObserver" in window ? new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("on"); io.unobserve(e.target); } }); }, { threshold: .12 }) : null;
+    document.querySelectorAll(".fade").forEach(function (el) { io ? io.observe(el) : el.classList.add("on"); });
+  }
+
+  var mod = document.getElementById("mod"), mb = document.getElementById("mb"), last = null;
+  function player(i) {
+    var y = ytId(i.media_url), v = vmId(i.media_url);
+    if (i.media_type === "youtube" && y) return '<div class="player"><iframe src="https://www.youtube-nocookie.com/embed/' + y + '?autoplay=1&rel=0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen title="' + esc(i.title) + '"></iframe></div>';
+    if (i.media_type === "vimeo" && v) return '<div class="player"><iframe src="https://player.vimeo.com/video/' + v + '?autoplay=1" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen title="' + esc(i.title) + '"></iframe></div>';
+    if (i.media_type === "video" && i.media_url) return '<div class="player"><video src="' + esc(i.media_url) + '" controls autoplay playsinline' + (i.thumb_url ? ' poster="' + esc(i.thumb_url) + '"' : "") + '></video></div>';
+    var img = i.media_type === "image" ? i.media_url : thumbOf(i);
+    return img ? '<div class="player" style="aspect-ratio:auto;padding:12px"><img id="pimg" src="' + esc(img) + '" alt="' + esc(i.title) + '"></div>' : "";
+  }
+  function open(i) {
+    last = document.activeElement;
+    mb.innerHTML = player(i) + ((i.gallery || []).length ? '<div class="gal" style="padding-top:14px">' + i.gallery.map(function (g) { return '<img src="' + esc(g) + '" alt="" data-g="' + esc(g) + '">'; }).join("") + "</div>" : "") +
+      '<div class="mmeta"><p class="eyebrow">' + esc([CAT[i.category], i.year].filter(Boolean).join(" · ")) + '</p><h3>' + esc(i.title) + '</h3>' + (i.role || i.client ? '<p style="color:#A3A09A;margin:0">' + esc([i.role, i.client].filter(Boolean).join(" · ")) + "</p>" : "") +
+      (i.description ? '<p style="margin:0">' + esc(i.description).replace(/\n/g, "<br>") + "</p>" : "") + (i.link_url ? '<p style="margin:6px 0 0"><a class="btn acc" href="' + esc(i.link_url) + '" target="_blank" rel="noopener">Voir le projet ↗</a></p>' : "") + "</div>";
+    mb.querySelectorAll("[data-g]").forEach(function (g) { g.onclick = function () { var p = document.getElementById("pimg"); if (p) p.src = g.dataset.g; else { mb.insertAdjacentHTML("afterbegin", '<div class="player" style="aspect-ratio:auto;padding:12px"><img id="pimg" src="' + esc(g.dataset.g) + '" alt=""></div>'); } }; });
+    mod.hidden = false; document.body.style.overflow = "hidden"; document.getElementById("mx").focus();
+  }
+  function close() { mod.hidden = true; mb.innerHTML = ""; document.body.style.overflow = ""; if (last) last.focus(); }
+  document.getElementById("mx").onclick = close;
+  mod.addEventListener("click", function (e) { if (e.target === mod) close(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !mod.hidden) close(); });
+})();
+</script>
+</body>
+</html>

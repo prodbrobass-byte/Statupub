@@ -296,6 +296,7 @@ main{padding-block:24px 64px}
 <div id="modal-root"></div>
 
 <script src="influence.js?v=17"></script>
+<script src="portfolio.js?v=1"></script>
 <script>
 /* ==================== Configuration ==================== */
 const SUPABASE_URL = "https://zqqtqopcrlxvsxvqmfjo.supabase.co";
@@ -1738,7 +1739,7 @@ async function viewAdmin(tab) {
   app.innerHTML = `<div class="spinner"></div>`;
   const [ov, nNotif] = await Promise.all([rpc("admin_overview"), rpc("admin_unnotified_count").catch(() => 0)]);
   const tabs = [["campagnes", "Campagnes", ov.campagnes_attente], ["recharges", "Recharges", ov.recharges_attente], ["retraits", "Retraits", ov.retraits_attente], ["payes", "Paiements envoyés", nNotif],
-    ["diffuseurs", "Diffuseurs"], ["ambassadeurs", "Ambassadeurs"], ["messages", "Messages", ov.messages_non_lus], ["annonceurs", "Annonceurs"], ["challenge", "Challenge"], ["meta", "Facebook Ads", ov.meta_attente], ["influence", "Influenceurs", ov.inf_attente], ["avis", "Avis", ov.avis_attente], ["vitrine", "Vitrine"], ["emails", "E-mails"], ["clics", "Clics"], ["reglages", "Réglages"]];
+    ["diffuseurs", "Diffuseurs"], ["ambassadeurs", "Ambassadeurs"], ["messages", "Messages", ov.messages_non_lus], ["annonceurs", "Annonceurs"], ["challenge", "Challenge"], ["meta", "Facebook Ads", ov.meta_attente], ["influence", "Influenceurs", ov.inf_attente], ["avis", "Avis", ov.avis_attente], ["vitrine", "Vitrine"], ["portfolio", "Portfolio"], ["emails", "E-mails"], ["clics", "Clics"], ["reglages", "Réglages"]];
   const marge = ov.ca_total - ov.reverse_total - (ov.commissions_total || 0);
   app.innerHTML = `<main class="wrap">
     <div class="page-head"><div><p class="eyebrow">Administration</p><h1 style="font-size:2rem">Tableau de bord StatuPub</h1></div><button class="btn btn-ghost btn-sm" id="refresh">Actualiser</button></div>
@@ -1753,7 +1754,7 @@ async function viewAdmin(tab) {
   app.querySelectorAll("[data-t]").forEach((b) => b.onclick = () => location.hash = "#/admin?t=" + b.dataset.t);
   $("#refresh").onclick = () => viewAdmin(tab);
   const body = $("#admin-body");
-  const fn = { campagnes: adminCampaigns, recharges: adminRecharges, retraits: adminWithdrawals, payes: adminPaid, diffuseurs: adminDiffuseurs, ambassadeurs: adminAmbassadors, messages: adminMessages, annonceurs: adminAnnonceurs, clics: adminClicks, challenge: adminChallenge, meta: adminMeta, influence: adminInfluence, avis: adminReviews, vitrine: adminShowcase, emails: adminEmails, reglages: adminSettings }[tab] || adminCampaigns;
+  const fn = { campagnes: adminCampaigns, recharges: adminRecharges, retraits: adminWithdrawals, payes: adminPaid, diffuseurs: adminDiffuseurs, ambassadeurs: adminAmbassadors, messages: adminMessages, annonceurs: adminAnnonceurs, clics: adminClicks, challenge: adminChallenge, meta: adminMeta, influence: adminInfluence, avis: adminReviews, vitrine: adminShowcase, portfolio: adminPortfolio, emails: adminEmails, reglages: adminSettings }[tab] || adminCampaigns;
   try { await fn(body, () => viewAdmin(tab)); } catch (e) { body.innerHTML = `<div class="notice warn">${esc(errMsg(e))}</div>`; }
 }
 
