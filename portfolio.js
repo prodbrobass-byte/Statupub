@@ -48,7 +48,10 @@ async function pfProfile(el) {
     <label>Showreel (lien YouTube, Vimeo ou vidéo)<div class="row" style="gap:8px"><input name="showreel_url" value="${esc(p.showreel_url)}" placeholder="https://youtu.be/..." style="flex:1"><button type="button" class="btn btn-ghost btn-sm" id="pf-sr">Envoyer une vidéo</button></div></label>
     <div class="grid g2"><label>Métiers / compétences (un par ligne)<textarea name="skills" rows="6">${esc((p.skills || []).join("\n"))}</textarea></label>
     <label>Outils & matériel (un par ligne)<textarea name="tools" rows="6">${esc((p.tools || []).join("\n"))}</textarea></label></div>
-    <label>Chaînes YouTube que je gère (une par ligne)<textarea name="youtube_channels" rows="6">${esc((p.youtube_channels || []).join("\n"))}</textarea></label>
+    <fieldset style="border:1px solid var(--line);border-radius:12px;padding:12px 14px" id="pf-yt"><legend style="font-weight:600;padding:0 6px">Chaînes YouTube que je gère</legend>
+      <p class="small muted" style="margin:0 0 10px">Nom de la chaîne et son lien (ex. https://www.youtube.com/@bmctv). Sur ton portfolio, la chaîne devient cliquable.</p>
+      <div class="stack" style="gap:8px" id="pf-yt-rows"></div>
+      <button type="button" class="btn btn-ghost btn-sm" id="pf-yt-add" style="margin-top:10px">+ Ajouter une chaîne</button></fieldset>
     <label>Clients / partenaires (un par ligne)<textarea name="clients" rows="4">${esc((p.clients || []).join("\n"))}</textarea></label>
     <label>Chiffres clés (une ligne : valeur | texte)<textarea name="stats" rows="4" placeholder="10+ | années d'expérience&#10;120 | projets livrés">${esc(stats)}</textarea></label>
     <div class="grid g2"><label>WhatsApp (avec indicatif)<input name="contact_phone" value="${esc(p.contact_phone)}" placeholder="221 77 000 00 00"></label>
@@ -57,6 +60,12 @@ async function pfProfile(el) {
     <label>Couleur d'accent<input name="accent" type="color" value="${esc(p.accent || "#E8A33D")}" style="width:80px;height:44px;padding:2px"></label>
     <button class="btn" type="submit">Enregistrer le profil</button></form>`;
   const f = el.querySelector("#pf-f");
+  const ytRows = el.querySelector("#pf-yt-rows");
+  const ytRow = (n = "", u = "") => { const d = document.createElement("div"); d.className = "row pf-yt-row"; d.style.cssText = "gap:8px;flex-wrap:wrap";
+    d.innerHTML = `<input data-n placeholder="Nom de la chaîne" value="${esc(n)}" style="flex:1 1 180px" aria-label="Nom de la chaîne"><input data-u inputmode="url" placeholder="https://www.youtube.com/@..." value="${esc(u)}" style="flex:2 1 260px" aria-label="Lien de la chaîne"><button type="button" class="btn btn-ghost btn-sm" aria-label="Retirer">✕</button>`;
+    d.querySelector("button").onclick = () => d.remove(); ytRows.appendChild(d); return d; };
+  (p.youtube_channels || []).forEach((c) => { const [n, u] = String(c).split(" | "); ytRow(n, u || ""); });
+  el.querySelector("#pf-yt-add").onclick = () => ytRow().querySelector("input").focus();
   const save = async (patch) => { const { error: e } = await sb.from("portfolio_profile").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", 1); if (e) throw e; };
   const pickImg = async (key, ratio, outW, title) => {
     const file = await pfPick("image/*"); if (!file) return;
@@ -78,7 +87,7 @@ async function pfProfile(el) {
     {
       try {
         await save({ name: f.name.value.trim(), headline: f.headline.value.trim(), location: f.location.value.trim(), bio: f.bio.value.trim(), showreel_url: f.showreel_url.value.trim() || null,
-          skills: pfLines(f.skills.value), tools: pfLines(f.tools.value), clients: pfLines(f.clients.value), youtube_channels: pfLines(f.youtube_channels.value), stats: st,
+          skills: pfLines(f.skills.value), tools: pfLines(f.tools.value), clients: pfLines(f.clients.value), youtube_channels: [...el.querySelectorAll(".pf-yt-row")].map((r) => [r.querySelector("[data-n]").value.trim(), r.querySelector("[data-u]").value.trim()]).filter((a) => a[0]).map(([n, u]) => (u ? `${n.replace(/\|/g, "")} | ${/^https?:\/\//.test(u) ? u : "https://" + u}` : n.replace(/\|/g, ""))), stats: st,
           contact_phone: f.contact_phone.value.replace(/\D/g, "") || null, contact_email: f.contact_email.value.trim() || null, socials, accent: f.accent.value });
         toast("Profil enregistré");
       } catch (er) { toast(errMsg(er), true); }
