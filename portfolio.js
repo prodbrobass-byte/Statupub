@@ -2,6 +2,7 @@
 /* global sb, esc, toast, errMsg, openModal, closeModal, copy, busy, infCrop, dateTimeFr */
 const PF_CAT = { realisation: "Réalisation", cadrage: "Cadrage", montage: "Montage", motion: "Motion design", web: "Développement web", photo: "Photo" };
 const PF_MEDIA = { none: "Aucun média", youtube: "YouTube", vimeo: "Vimeo", video: "Vidéo envoyée", image: "Image", link: "Lien seulement" };
+const pfCats = (i) => (i.categories && i.categories.length ? i.categories : [i.category]);
 const pfUrl = (t) => location.origin + "/portfolio/?k=" + t;
 const pfLines = (s) => String(s || "").split(/\n|,/).map((x) => x.trim()).filter(Boolean);
 
@@ -95,7 +96,7 @@ async function pfItems(el) {
     <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><p class="muted" style="margin:0">${items.length} œuvre(s) · ${items.filter((i) => i.published).length} visible(s) sur le portfolio</p><button class="btn btn-sm" id="pf-new">+ Ajouter une œuvre</button></div>
     ${items.map((i) => `<div class="card row" style="gap:14px;flex-wrap:wrap;align-items:center;padding:14px">
       <div style="width:120px;height:68px;border-radius:10px;background:#EEF3F1 center/cover no-repeat;${thumb(i) ? `background-image:url('${esc(thumb(i))}')` : ""};flex:none"></div>
-      <div style="flex:1;min-width:180px"><b>${esc(i.title)}</b> ${i.featured ? '<span class="pill">★ À la une</span>' : ""}<div class="small muted">${esc([PF_CAT[i.category], i.year, i.client].filter(Boolean).join(" · "))} · ${PF_MEDIA[i.media_type]}</div></div>
+      <div style="flex:1;min-width:180px"><b>${esc(i.title)}</b> ${i.featured ? '<span class="pill">★ À la une</span>' : ""}<div class="small muted">${esc([pfCats(i).map((c) => PF_CAT[c]).join(" + "), i.year, i.client].filter(Boolean).join(" · "))} · ${PF_MEDIA[i.media_type]}</div></div>
       <span class="pill" style="background:${i.published ? "#E3F3EA;color:#145049" : "#F6E1DD;color:#8A3B2E"}">${i.published ? "Visible" : "Brouillon"}</span>
       <div class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" data-pub="${i.id}">${i.published ? "Masquer" : "Publier"}</button><button class="btn btn-ghost btn-sm" data-ed="${i.id}">Modifier</button><button class="btn btn-ghost btn-sm" data-del="${i.id}" aria-label="Supprimer ${esc(i.title)}">🗑</button></div></div>`).join("") || '<div class="card muted">Aucune œuvre pour l\'instant.</div>'}</div>`;
   const byId = (id) => items.find((x) => x.id === id);
@@ -106,11 +107,12 @@ async function pfItems(el) {
 }
 
 function pfItemModal(it, done) {
-  const i = it || { title: "", category: "realisation", media_type: "youtube", published: true, featured: false, sort: 0, gallery: [] };
+  const i = it || { title: "", category: "realisation", categories: ["realisation"], media_type: "youtube", published: true, featured: false, sort: 0, gallery: [] };
   openModal(`<h2 style="margin:0">${it ? "Modifier l'œuvre" : "Nouvelle œuvre"}</h2>
     <form id="pi" class="stack" style="gap:12px">
       <label>Titre<input name="title" value="${esc(i.title)}" required></label>
-      <div class="grid g2"><label>Métier<select name="category">${Object.entries(PF_CAT).map(([k, l]) => `<option value="${k}" ${k === i.category ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+      <fieldset style="border:1px solid var(--line);border-radius:12px;padding:10px 14px"><legend class="small" style="font-weight:600;padding:0 6px">Ce que j'ai fait sur ce projet (plusieurs choix possibles)</legend><div class="row" style="gap:14px;flex-wrap:wrap">${Object.entries(PF_CAT).map(([k, l]) => `<label class="row" style="gap:6px"><input type="checkbox" name="cat" value="${k}" ${pfCats(i).includes(k) ? "checked" : ""}> ${l}</label>`).join("")}</div></fieldset>
+      <div class="grid g2">
       <label>Année<input name="year" type="number" min="1990" max="2100" value="${esc(i.year || "")}"></label></div>
       <div class="grid g2"><label>Client / production<input name="client" value="${esc(i.client || "")}"></label><label>Mon rôle<input name="role" value="${esc(i.role || "")}" placeholder="Réalisation, montage…"></label></div>
       <label>Description<textarea name="description" rows="4">${esc(i.description || "")}</textarea></label>
@@ -137,7 +139,9 @@ function pfItemModal(it, done) {
     m.querySelector("#pi-gal").onclick = () => up("image/*", "galerie", (u) => { f.gallery.value = (f.gallery.value.trim() ? f.gallery.value.trim() + "\n" : "") + u; });
     f.onsubmit = async (e) => {
       e.preventDefault();
-      const row = { title: f.title.value.trim(), category: f.category.value, year: f.year.value ? +f.year.value : null, client: f.client.value.trim() || null, role: f.role.value.trim() || null,
+      const cats = [...f.querySelectorAll("[name=cat]:checked")].map((c) => c.value);
+      if (!cats.length) return toast("Coche au moins un métier.", true);
+      const row = { title: f.title.value.trim(), category: cats[0], categories: cats, year: f.year.value ? +f.year.value : null, client: f.client.value.trim() || null, role: f.role.value.trim() || null,
         description: f.description.value.trim() || null, media_type: f.media_type.value, media_url: f.media_url.value.trim() || null, thumb_url: f.thumb_url.value.trim() || null,
         gallery: pfLines(f.gallery.value.replace(/,/g, "\n")).filter((u) => /^https?:\/\//.test(u)), link_url: f.link_url.value.trim() || null,
         published: f.published.checked, featured: f.featured.checked, sort: +f.sort.value || 0 };

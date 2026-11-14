@@ -107,6 +107,8 @@ footer{padding:36px 0 48px;color:var(--muted);font-size:.85rem;text-align:center
   var ytId = function (u) { var m = String(u || "").match(/(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{11})/); return m && m[1]; };
   var vmId = function (u) { var m = String(u || "").match(/vimeo\.com\/(?:video\/)?(\d+)/); return m && m[1]; };
   var thumbOf = function (i) { if (i.thumb_url) return i.thumb_url; if (i.media_type === "youtube" && ytId(i.media_url)) return "https://i.ytimg.com/vi/" + ytId(i.media_url) + "/hqdefault.jpg"; if (i.media_type === "image") return i.media_url; return (i.gallery || [])[0] || ""; };
+  var cs = function (i) { return (i.categories && i.categories.length) ? i.categories : [i.category]; };
+  var cl = function (i) { return cs(i).map(function (c) { return CAT[c]; }).filter(Boolean).join(" · "); };
   var token = (new URLSearchParams(location.search).get("k") || location.hash.replace(/^#/, "")).toLowerCase().replace(/[^a-f0-9]/g, "");
   function locked(msg) { app.innerHTML = '<div class="lock"><div class="box"><p class="eyebrow">Portfolio privé</p><h2 style="font-size:2rem;margin:10px 0">' + esc(msg) + '</h2><p style="color:#A3A09A">Ce portfolio n\'est accessible qu\'avec un lien personnel. Demandez un nouveau lien à son propriétaire.</p></div></div>'; }
   if (!token) return locked("Lien manquant");
@@ -119,7 +121,7 @@ footer{padding:36px 0 48px;color:var(--muted);font-size:.85rem;text-align:center
     document.documentElement.style.setProperty("--acc", p.accent || "#E8A33D");
     document.title = p.name + " · Portfolio";
     var parts = String(p.name || "").split(" "), last = parts.pop();
-    var cats = Object.keys(CAT).filter(function (k) { return items.some(function (i) { return i.category === k; }); });
+    var cats = Object.keys(CAT).filter(function (k) { return items.some(function (i) { return cs(i).indexOf(k) >= 0; }); });
     var wa = String(p.contact_phone || "").replace(/\D/g, "");
     var socials = p.socials || {};
     var showYt = ytId(p.showreel_url), showVm = vmId(p.showreel_url);
@@ -151,11 +153,11 @@ footer{padding:36px 0 48px;color:var(--muted);font-size:.85rem;text-align:center
 
     var grid = document.getElementById("grid"), cur = "";
     function draw() {
-      var list = items.filter(function (i) { return !cur || i.category === cur; });
+      var list = items.filter(function (i) { return !cur || cs(i).indexOf(cur) >= 0; });
       grid.innerHTML = list.length ? list.map(function (i, k) {
         var t = thumbOf(i), vid = ["youtube", "vimeo", "video"].indexOf(i.media_type) >= 0;
         return '<button class="work' + (i.featured && !cur ? " big" : "") + '" data-i="' + items.indexOf(i) + '" aria-label="' + esc(i.title) + '"><div class="th" style="' + (t ? "background-image:url('" + esc(t) + "')" : "") + '">' + (t ? "" : '<span class="ph">' + esc(i.title) + "</span>") +
-          (vid ? '<span class="play" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24"><path fill="#fff" d="M8 5v14l11-7z"/></svg></span>' : "") + '<span class="tag">' + esc(CAT[i.category] || "") + '</span></div><div class="meta"><h3>' + esc(i.title) + '</h3><span class="sub">' + esc([i.role, i.client, i.year].filter(Boolean).join(" · ")) + "</span></div></button>";
+          (vid ? '<span class="play" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24"><path fill="#fff" d="M8 5v14l11-7z"/></svg></span>' : "") + '<span class="tag">' + esc(cl(i)) + '</span></div><div class="meta"><h3>' + esc(i.title) + '</h3><span class="sub">' + esc([i.role, i.client, i.year].filter(Boolean).join(" · ")) + "</span></div></button>";
       }).join("") : '<div class="empty">Les projets arrivent bientôt.</div>';
       grid.querySelectorAll("[data-i]").forEach(function (b) { b.onclick = function () { open(items[+b.dataset.i]); }; });
     }
@@ -179,7 +181,7 @@ footer{padding:36px 0 48px;color:var(--muted);font-size:.85rem;text-align:center
   function open(i) {
     last = document.activeElement;
     mb.innerHTML = player(i) + ((i.gallery || []).length ? '<div class="gal" style="padding-top:14px">' + i.gallery.map(function (g) { return '<img src="' + esc(g) + '" alt="" data-g="' + esc(g) + '">'; }).join("") + "</div>" : "") +
-      '<div class="mmeta"><p class="eyebrow">' + esc([CAT[i.category], i.year].filter(Boolean).join(" · ")) + '</p><h3>' + esc(i.title) + '</h3>' + (i.role || i.client ? '<p style="color:#A3A09A;margin:0">' + esc([i.role, i.client].filter(Boolean).join(" · ")) + "</p>" : "") +
+      '<div class="mmeta"><p class="eyebrow">' + esc([cl(i), i.year].filter(Boolean).join(" · ")) + '</p><h3>' + esc(i.title) + '</h3>' + (i.role || i.client ? '<p style="color:#A3A09A;margin:0">' + esc([i.role, i.client].filter(Boolean).join(" · ")) + "</p>" : "") +
       (i.description ? '<p style="margin:0">' + esc(i.description).replace(/\n/g, "<br>") + "</p>" : "") + (i.link_url ? '<p style="margin:6px 0 0"><a class="btn acc" href="' + esc(i.link_url) + '" target="_blank" rel="noopener">Voir le projet ↗</a></p>' : "") + "</div>";
     mb.querySelectorAll("[data-g]").forEach(function (g) { g.onclick = function () { var p = document.getElementById("pimg"); if (p) p.src = g.dataset.g; else { mb.insertAdjacentHTML("afterbegin", '<div class="player" style="aspect-ratio:auto;padding:12px"><img id="pimg" src="' + esc(g.dataset.g) + '" alt=""></div>'); } }; });
     mod.hidden = false; document.body.style.overflow = "hidden"; document.getElementById("mx").focus();
