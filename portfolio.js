@@ -47,6 +47,7 @@ async function pfProfile(el) {
     <label>Showreel (lien YouTube, Vimeo ou vidéo)<div class="row" style="gap:8px"><input name="showreel_url" value="${esc(p.showreel_url)}" placeholder="https://youtu.be/..." style="flex:1"><button type="button" class="btn btn-ghost btn-sm" id="pf-sr">Envoyer une vidéo</button></div></label>
     <div class="grid g2"><label>Métiers / compétences (un par ligne)<textarea name="skills" rows="6">${esc((p.skills || []).join("\n"))}</textarea></label>
     <label>Outils & matériel (un par ligne)<textarea name="tools" rows="6">${esc((p.tools || []).join("\n"))}</textarea></label></div>
+    <label>Chaînes YouTube que je gère (une par ligne)<textarea name="youtube_channels" rows="6">${esc((p.youtube_channels || []).join("\n"))}</textarea></label>
     <label>Clients / partenaires (un par ligne)<textarea name="clients" rows="4">${esc((p.clients || []).join("\n"))}</textarea></label>
     <label>Chiffres clés (une ligne : valeur | texte)<textarea name="stats" rows="4" placeholder="10+ | années d'expérience&#10;120 | projets livrés">${esc(stats)}</textarea></label>
     <div class="grid g2"><label>WhatsApp (avec indicatif)<input name="contact_phone" value="${esc(p.contact_phone)}" placeholder="221 77 000 00 00"></label>
@@ -76,7 +77,7 @@ async function pfProfile(el) {
     {
       try {
         await save({ name: f.name.value.trim(), headline: f.headline.value.trim(), location: f.location.value.trim(), bio: f.bio.value.trim(), showreel_url: f.showreel_url.value.trim() || null,
-          skills: pfLines(f.skills.value), tools: pfLines(f.tools.value), clients: pfLines(f.clients.value), stats: st,
+          skills: pfLines(f.skills.value), tools: pfLines(f.tools.value), clients: pfLines(f.clients.value), youtube_channels: pfLines(f.youtube_channels.value), stats: st,
           contact_phone: f.contact_phone.value.replace(/\D/g, "") || null, contact_email: f.contact_email.value.trim() || null, socials, accent: f.accent.value });
         toast("Profil enregistré");
       } catch (er) { toast(errMsg(er), true); }
