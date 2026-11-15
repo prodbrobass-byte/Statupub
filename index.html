@@ -1738,7 +1738,7 @@ async function adminChallenge(body, reload) {
 async function viewAdmin(tab) {
   app.innerHTML = `<div class="spinner"></div>`;
   const [ov, nNotif] = await Promise.all([rpc("admin_overview"), rpc("admin_unnotified_count").catch(() => 0)]);
-  const tabs = [["campagnes", "Campagnes", ov.campagnes_attente], ["recharges", "Recharges", ov.recharges_attente], ["retraits", "Retraits", ov.retraits_attente], ["payes", "Paiements envoyés", nNotif],
+  const tabs = [["campagnes", "Campagnes", ov.campagnes_attente], ["recharges", "Recharges", ov.recharges_attente], ["retraits", "Retraits", (ov.retraits_attente || 0) + (ov.retraits_annonceurs_attente || 0)], ["payes", "Paiements envoyés", nNotif],
     ["diffuseurs", "Diffuseurs"], ["ambassadeurs", "Ambassadeurs"], ["messages", "Messages", ov.messages_non_lus], ["annonceurs", "Annonceurs"], ["challenge", "Challenge"], ["meta", "Facebook Ads", ov.meta_attente], ["influence", "Influenceurs", ov.inf_attente], ["avis", "Avis", ov.avis_attente], ["vitrine", "Vitrine"], ["portfolio", "Portfolio"], ["emails", "E-mails"], ["clics", "Clics"], ["reglages", "Réglages"]];
   const marge = ov.ca_total - ov.reverse_total - (ov.commissions_total || 0);
   app.innerHTML = `<main class="wrap">
@@ -1747,7 +1747,7 @@ async function viewAdmin(tab) {
       <div class="card wallet kpi"><span class="eyebrow">Marge plateforme</span><span class="big">${fcfa(marge)}</span><span class="small muted">FCFA · ${fcfa(ov.ca_total)} facturés, ${fcfa(ov.reverse_total)} aux diffuseurs, ${fcfa(ov.commissions_total || 0)} aux ambassadeurs</span></div>
       <div class="card kpi"><span class="eyebrow">Clics aujourd'hui</span><span class="num">${fcfa(ov.clics_valides_jour)}</span><span class="small muted">${fcfa(ov.clics_invalides_jour)} bloqués (${ov.clics_valides_jour + ov.clics_invalides_jour ? Math.round(100 * ov.clics_invalides_jour / (ov.clics_valides_jour + ov.clics_invalides_jour)) : 0} %)</span></div>
       <div class="card kpi"><span class="eyebrow">Utilisateurs</span><span class="num">${fcfa(ov.diffuseurs)}</span><span class="small muted">diffuseurs · ${fcfa(ov.annonceurs)} annonceurs</span></div>
-      <div class="card kpi"><span class="eyebrow">À payer</span><div>${money(ov.retraits_attente_montant)}</div><span class="small muted">${ov.retraits_attente} retrait(s) en attente</span></div>
+      <div class="card kpi"><span class="eyebrow">À payer</span><div>${money((ov.retraits_attente_montant || 0) + (ov.retraits_annonceurs_montant || 0))}</div><span class="small muted">${ov.retraits_attente} diffuseur(s) · ${ov.retraits_annonceurs_attente || 0} annonceur(s)</span></div>
     </div>
     <div class="tabs" role="tablist">${tabs.map(([k, l, n]) => `<button class="tab" role="tab" aria-selected="${k === tab}" data-t="${k}">${l}${n ? `<span class="count">${n}</span>` : ""}</button>`).join("")}</div>
     <div id="admin-body" style="margin-top:20px"><div class="spinner"></div></div></main>`;
@@ -1863,7 +1863,7 @@ async function adminWithdrawals(body, reload) {
   const head = `<thead><tr><th>Date</th><th>Diffuseur</th><th>Moyen</th><th>Numéro</th><th class="n">Montant</th><th></th></tr></thead>`;
   body.innerHTML = `<div class="stack">
     <div class="notice info small"><span>${pay.configured ? `« Payer via PayDunya » envoie l'argent automatiquement depuis votre solde PayDunya${pay.mode === "test" ? " (mode test)" : ""}. Vérifiez que ce solde est suffisant.` : "PayDunya n'est pas encore branché : envoyez l'argent depuis votre téléphone, puis cliquez sur « Payé à la main »."}</span></div>
-    <h2>À payer (${pend.length})</h2>
+    <h2>Retraits diffuseurs à payer (${pend.length})</h2>
     ${pend.length ? `<div class="table"><table>${head}<tbody>${pend.map((r) => row(r, true)).join("")}</tbody></table></div>` : `<div class="empty">Rien à payer.</div>`}
     ${running.length ? `<div class="row between" style="margin-top:12px"><h2>Paiements en cours (${running.length})</h2><button class="btn btn-ghost btn-sm" id="pd-sync">Revérifier</button></div>
       <div class="table"><table>${head}<tbody>${running.map((r) => row(r, false)).join("")}</tbody></table></div>` : ""}
@@ -1903,15 +1903,16 @@ async function adminWithdrawals(body, reload) {
   }));
   $("#pd-sync")?.addEventListener("click", async (e) => { busy(e.currentTarget, true); try { await payApi("sync"); toast("Statuts mis à jour"); } catch (err) { toast(errMsg(err), true); } reload(); });
   // Retraits annonceurs (remboursement de solde, frais retenus)
-  const { data: aws } = await sb.from("annonceur_withdrawals").select("*, profiles(full_name, company)").order("created_at", { ascending: false }).limit(60);
+  const { data: aws, error: awErr } = await sb.from("annonceur_withdrawals").select("*, profiles(full_name, company)").order("created_at", { ascending: false }).limit(60);
+  if (awErr) toast("Retraits annonceurs : " + errMsg(awErr), true);
   const awP = (aws || []).filter((x) => x.status === "en_attente"), awH = (aws || []).filter((x) => x.status !== "en_attente");
   const fees = (aws || []).filter((x) => x.status === "validee").reduce((t, x) => t + x.fee, 0);
   const awRow = (x, act) => `<tr><td>${dateTimeFr(x.created_at)}</td><td>${esc(x.profiles?.company || x.profiles?.full_name || "")}</td><td>${esc(x.method)}</td><td class="num">${esc(x.phone)}</td><td class="n">${fcfa(x.amount)}</td><td class="n">${fcfa(x.fee)}</td><td class="n"><b>${fcfa(x.net)}</b></td><td>${act ? `<div class="row" style="flex-wrap:nowrap"><button class="btn btn-ok btn-sm" data-awok="${x.id}">Payé (${fcfa(x.net)} F)</button><button class="btn btn-bad btn-sm" data-awno="${x.id}">Refuser</button></div>` : pill(x.status)}</td></tr>`;
   const awHead = `<thead><tr><th>Date</th><th>Annonceur</th><th>Moyen</th><th>Numéro</th><th class="n">Retiré du solde</th><th class="n">Frais</th><th class="n">À envoyer</th><th></th></tr></thead>`;
-  body.querySelector(".stack")?.insertAdjacentHTML("beforeend", `<h2 style="margin-top:18px">Retraits annonceurs (${awP.length})</h2>
+  body.querySelector(".stack > .notice")?.insertAdjacentHTML("afterend", `<div class="stack" style="gap:10px;border:2px solid ${awP.length ? "var(--saffron)" : "var(--line)"};border-radius:16px;padding:14px"><h2 style="margin:0">Retraits annonceurs (${awP.length})</h2>
     <p class="small muted" style="margin:0">Remboursement du solde non utilisé, avec ${Math.round(Number(state.settings?.annonceur_withdraw_fee ?? 0.15) * 100)} % de frais retenus. Envoie la colonne « À envoyer » puis clique sur « Payé ». Frais encaissés : <b>${fcfa(fees)} F</b>.</p>
     ${awP.length ? `<div class="table"><table>${awHead}<tbody>${awP.map((x) => awRow(x, true)).join("")}</tbody></table></div>` : `<div class="empty small">Aucune demande en attente.</div>`}
-    ${awH.length ? `<details><summary class="small">Historique (${awH.length})</summary><div class="table"><table>${awHead}<tbody>${awH.map((x) => awRow(x, false)).join("")}</tbody></table></div></details>` : ""}`);
+    ${awH.length ? `<details><summary class="small">Historique (${awH.length})</summary><div class="table"><table>${awHead}<tbody>${awH.map((x) => awRow(x, false)).join("")}</tbody></table></div></details>` : ""}</div>`);
   body.querySelectorAll("[data-awok],[data-awno]").forEach((b) => b.onclick = async () => {
     const ok = !!b.dataset.awok, id = b.dataset.awok || b.dataset.awno;
     if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = ok ? "Confirmer : argent envoyé ?" : "Confirmer le refus ?"; return; }
